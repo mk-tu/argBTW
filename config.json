@@ -1,0 +1,91 @@
+{
+  "db": {
+    "dsn": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "logicsem",
+      "user": "logicsem",
+      "password": "XXX",
+      "application_name": "dnestpdb"
+    },
+    "max_connections": 100
+  },
+  "db_admin": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "logicsem",
+    "user": "postgres",
+    "password": "XXX",
+    "application_name": "dpdb-admin"
+  },
+  "htd": {
+    "path": "ext/htd",
+    "parameters": [
+      "--child-limit",
+      "5"
+    ]
+  },
+  "clingo": {
+    "path": "ext/clingo"
+  },
+
+  "dpdb": {
+  },
+  "problem_specific": {
+    "nestpmc": {
+      "max_solver_threads": 12,
+      "inner_vars_threshold": 1,
+      "max_worker_threads": 12
+    },
+    "pmcext": {
+      "preprocessor": {
+        "path": "ext/pmcext",
+        "args": "-vivification -eliminateLit -litImplied -iterate=10 -equiv -orGate -affine"
+      },
+      "sat_solver": {
+        "path": "ext/sat_solver",
+        "seed_arg": "-s"
+      },
+      "max_solver_threads": 12
+    }
+  },
+  "nesthdb": {
+    "threshold_hybrid": 99999,
+    "threshold_abstract": 99999,
+    "max_recursion_depth": 1,
+    "sharpsat_solver": {
+      "path": "ext/sharpsat_solver",
+      "args": "-C -c",
+      "output_parser": {
+        "class": "RegExReader",
+        "args": {
+          "pattern": "Counting... (\\d+) models"
+        },
+        "result": "result"
+      }
+    },
+    "pmc_solver": {
+      "path": "<PATH-TO-PROJCLINGO>>/projClingo-wrapper-1.0",
+      "output_parser": {
+        "class": "RegExReader",
+        "args": {
+          "pattern": "Models.*: (\\d+)\\n"
+        },
+        "result": "result"
+      }
+    },
+    "preprocessor": {
+      "path": "ext/preprocessor",
+      "args": "-vivification -eliminateLit -litImplied -iterate=10"
+    },
+    "asp": {
+      "encodings": [
+        {
+          "file": "guess_min_degree.lp",
+          "size": 95,
+          "timeout": 10
+        }
+      ]
+    }
+  }
+}
