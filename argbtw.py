@@ -358,7 +358,7 @@ def decomp_guided_reduction_8(af, td, tdr, cnf, clauses, debug_cnf):
                 cnf += ota + " -" + str(at.os[at.last_node]) + " 0\n"
                 clauses += 1
                 if debug_cnf:
-                    cnf += "c\t (8) <= attacker: "  +at.name +" attacks "+v+  "\n"
+                    cnf += "c\t (8) <= attacker: " + at.name + " attacks " + v + "\n"
 
             for c in node.children:
                 if c in af[v].os.keys():
@@ -366,7 +366,7 @@ def decomp_guided_reduction_8(af, td, tdr, cnf, clauses, debug_cnf):
                     cnf += ota + " -" + str(af[v].os[c]) + " 0\n"
                     clauses += 1
                     if debug_cnf:
-                        cnf += "c\t (8) <= ota child "+str(v)+"  "+str(af[v].os[node])+"\n"
+                        cnf += "c\t (8) <= ota child " + str(v) + "  " + str(af[v].os[node]) + "\n"
 
             right_arrow += "0\n"
             cnf += right_arrow
@@ -430,7 +430,6 @@ def add_o(af, td, tdr, variables):
         for v in node.vertices:
             af[v].os[node] = o_number
             o_number += 1
-
 
         for c in node.children:
             nodes.insert(0, c)
@@ -513,7 +512,7 @@ def compute_torso_graph(af):
         line = f.readline()
 
     f.close()
-
+    logger.info("Backdoor size: " + str(len(nodes)))
     torso = Graph(nodes, edges, adj)
     return torso
 
@@ -639,13 +638,14 @@ def arg_bd_sat(af, file, **kwargs):
     compute_torso(file, "bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
+
     logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
 
     add_remaining(tdr, torso, af)
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
                                    None)
-
+    logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
     decomp_guided_reduction(af, torso.tree_decomp, tdr, semantics)
 
@@ -684,7 +684,10 @@ def main():
 
     # read AF
     logger.info("Reading AF")
-    af = read_af(cfg, **vars(args))
+    af, num_args, num_atts = read_af(cfg, **vars(args))
+
+    logger.info("Argumentation Framework with " + str(num_args) + " arguments and " + str(num_atts) + " attacks read")
+
     solve(af, **vars(args))
 
 

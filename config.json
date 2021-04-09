@@ -34,7 +34,7 @@
   "problem_specific": {
     "nestpmc": {
       "max_solver_threads": 12,
-      "inner_vars_threshold": 1,
+      "inner_vars_threshold": 99999,
       "max_worker_threads": 12
     },
     "pmcext": {

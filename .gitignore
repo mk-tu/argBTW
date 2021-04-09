@@ -1,2 +1,12 @@
 ext/*
 __pycache__
+*.torso
+*.cnf
+*.apx
+*.out
+.idea/*
+instances/*
+.idea
+instances
+.idea/vcs.xml
+*.bash

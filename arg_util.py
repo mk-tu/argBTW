@@ -10,7 +10,7 @@ class Argument:
 
     ds = {}  # prop vars d belonging to the respective nodes in TD
     last_node = None  # last (nearest root) node this argument appears in (in TD)
-    n = 0 # prop var n for adm reduction
+    n = 0  # prop var n for adm reduction
     ds = {}  # prop vars o belonging to the respective nodes in TD
 
     thisArgument = 0  # identifier as in the cnf
@@ -49,23 +49,28 @@ def read_af(cfg, file, **kwargs):
         return arguments[name]
 
     arguments = {}
+    num_attacks = 0
+    num_args = 0
     while (line):
         line = line.replace(").", "")
         line = line.strip()
+
         if (line.startswith("arg")):
+            num_args += 1
             line = line.replace("arg(", "")
             add_argument(line)
 
         elif (line.startswith("att")):
+            num_attacks += 1
             line = line.replace("att(", "")
             a = line.split(",")[0]
             b = line.split(",")[1]
             aA = add_argument(a)
             bA = add_argument(b)
-            for ar in arguments.values():
+            for ar in arguments.values():  # TODO optimize: remove loop
                 ar.add_attack(aA, bA)
 
         line = r.readline()
 
     r.close()
-    return arguments
+    return arguments, num_args, num_attacks
