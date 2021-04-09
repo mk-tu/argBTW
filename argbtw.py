@@ -566,6 +566,7 @@ def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to t
     if len(adj) < len(af) - len(
             torso.nodes):  # not all arguments are adjacent to a backdoor -> add remaining to new bag
         rems = af.keys() - torso.nodes - adj.keys()
+
         tdr.num_bags += 1
         tdr.bags[tdr.num_bags] = [x for x in rems]
         tdr.num_orig_vertices += len(rems)

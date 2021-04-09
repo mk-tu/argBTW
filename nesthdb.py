@@ -35,7 +35,6 @@ class Formula:
         input = CnfReader.from_file(fname)
         # uncomment the following line for sharpsat solving
         input.projected = set(range(1, input.num_vars + 1)) - input.single_vars  # sharpsat!
-
         # input.projected = set(range(1, 10))
 
         #    logger.info("PROJECTED")
@@ -350,8 +349,7 @@ class Problem:
                     cfg["nesthdb"]["threshold_abstract"]))
                 return self.final_result(self.solve_classic())
 
-        # for n in self.graph.tree_decomp.postorder():
-        #     print(n)
+
 
         return self.final_result(self.nestedpmc())
 
@@ -405,9 +403,11 @@ def main_btw(cfg_btw, sat_file, td, torso, **kwargs):
     if td:
         prob.graph = torso
         # remove single vars from torso
+
         for b in torso.tree_decomp.postorder():
-            proj = [x for x in formula.projected]
-            b.vertices = list(set(b.vertices) & set(proj))
+            proj = formula.projected
+            b.vertices = list(set(b.vertices) & proj)
+
 
     main_common(prob)
 

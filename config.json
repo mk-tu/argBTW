@@ -38,7 +38,7 @@
       "max_worker_threads": 12
     },
     "pmcext": {
-      "preprocessor": {
+      "Xpreprocessor": {
         "path": "ext/pmcext",
         "args": "-vivification -eliminateLit -litImplied -iterate=10 -equiv -orGate -affine"
       },
@@ -74,9 +74,9 @@
         "result": "result"
       }
     },
-    "preprocessor": {
+    "Xpreprocessor": {
       "path": "ext/preprocessor",
-      "args": "-vivification -eliminateLit -litImplied -iterate=10"
+      "args": "-vivification -eliminateLit -litImplied -iterate=10 -equiv"
     },
     "asp": {
       "encodings": [

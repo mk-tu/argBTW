@@ -50,7 +50,7 @@ def lit2expr (lit):
         return "NOT {}".format(lit2var(lit))
 
 def covered_clauses(clauses, vertices):
-    vertice_set = set([int(x) for x in vertices])
+    vertice_set = vertices
     cur_cl = set()
     for v in vertices:
         candidates = clauses[int(v)]
