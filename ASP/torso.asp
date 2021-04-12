@@ -1,3 +1,4 @@
+#defined backdoor/1.
 remaining(X) :- arg(X),not backdoor(X).
 
 % compute undirected remaining graph
