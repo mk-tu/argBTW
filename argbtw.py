@@ -1,9 +1,10 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: future_fstrings -*-
 import logging
 import sys
 import subprocess
 import argparse
+import os
 
 from future_fstrings import StreamReader
 
@@ -114,7 +115,7 @@ def setup_logging(level="INFO"):
 def arg_to_backdoor(file):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
-        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", "ASP/minimumAcycBackdoor.asp", file,
+        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
          "--time-limit=100"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
@@ -123,7 +124,7 @@ def arg_to_backdoor(file):
     p.stdin.close()
     p.wait()
 
-    f = open("bd.out", "w")
+    f = open(os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
 
     f.write(bd)
     f.close()
@@ -149,7 +150,7 @@ def arg_to_backdoor(file):
 def compute_torso(file, bd):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
-        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", "ASP/torso.asp", file, bd],
+        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/torso.asp", file, bd],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
     bd = str(bd.splitlines()[0])
@@ -157,7 +158,7 @@ def compute_torso(file, bd):
     p.stdin.close()
     p.wait()
 
-    f = open("torso.out", "w")
+    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "w")
     bd = bd.replace(" ", "\n")
     f.write(bd)
     f.close()
@@ -201,10 +202,10 @@ def sat_dp_only(af, file, argument, **kwargs):
             Argument.maxArgument) + " " + str(clauses) + "\n" + cnf
 
     # save in "argSat.cnf"
-    ff = open("argSat.cnf", "w")
+    ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
     ff.write(cnf)
     ff.close()
-    main_btw(cfg, "argSat.cnf", None, None, **kwargs)
+    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
 
 
 def find_last_node(td, af, tdr):  # traverse the TD in preorder and find out last(a) for all a
@@ -468,7 +469,7 @@ def decomp_guided_reduction(af, td, tdr, semantics):
         logger.error("Unknown semantics")
         exit(1)
 
-    f = open("argSat.cnf", "w")
+    f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
     cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
     f.close()
@@ -491,7 +492,7 @@ def compute_torso_graph(af):
     adj = {}
     num_vertices = 0
 
-    f = open("torso.out", "r")
+    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
     line = f.readline()
     while line:
         line = line.replace(").", "")
@@ -541,7 +542,7 @@ def decompose_torso(file, kwargs, af):
 
 
 def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to the respective bags
-    f = open("torso.out", "r")
+    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
     line = f.readline()
 
     adj = {}
@@ -636,7 +637,7 @@ def arg_bd_sat(af, file, **kwargs):
     logger.debug("Computing backdoor")
     arg_to_backdoor(file)
     logger.debug("Computing torso")
-    compute_torso(file, "bd.out")
+    compute_torso(file, os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
 
@@ -665,7 +666,7 @@ def arg_bd_sat(af, file, **kwargs):
     # for b in tdr.bags.values():
     #     b.sort()
 
-    main_btw(cfg, "argSat.cnf", torso.tree_decomp, torso, **kwargs)
+    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, **kwargs)
 
 
 def solve(af, btw_method, **kwargs):
