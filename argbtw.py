@@ -116,7 +116,7 @@ def arg_to_backdoor(file):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
         [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
-         "--time-limit=100"],
+         "--time-limit=10"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
     bd = str(bd.splitlines()[0])

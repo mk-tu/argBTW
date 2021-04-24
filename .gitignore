@@ -10,3 +10,7 @@ instances/*
 instances
 .idea/vcs.xml
 *.bash
+*.lp
+instances_old
+instances_old/*
+*.gr
