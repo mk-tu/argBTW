@@ -345,7 +345,7 @@ def decomp_guided_reduction_7(af, td, tdr, cnf, clauses, debug_cnf):
 def decomp_guided_reduction_8(af, td, tdr, cnf, clauses, debug_cnf):
     nodes = [td.root]
 
-    while (len(nodes) > 0):
+    while nodes:
         node = nodes.pop()
         for v in node.vertices:
             # <->
@@ -537,7 +537,6 @@ def decompose_torso(file, kwargs, af):
     logger.info("De-normalize torso")
     # de-normalize
     tdr.bags = {k: [torso._node_rev_map[vv] for vv in v] for k, v in tdr.bags.items()}
-
     return tdr, torso
 
 
@@ -589,6 +588,7 @@ def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to t
 def add_ds_to_td(tdr, af):
     # adds the additional d vars to their respective nodes and their parents
     for a in af.values():
+
         for n in a.ds.keys():
             n.vertices.append(a.ds[n])
             tdr.num_orig_vertices += 1
@@ -596,11 +596,24 @@ def add_ds_to_td(tdr, af):
                 n.parent.vertices.append(a.ds[n])
 
 
-def add_ns_to_td(tdr, af):
+def add_ns_to_td(tdr, af, td):
     # adds the additional n vars to their respective nodes
     for a in af.values():
-        a.last_node.vertices.append(a.n)
-        tdr.num_orig_vertices += 1
+        # a.last_node.vertices.append(a.n)
+        #tdr.num_orig_vertices += 1
+
+        nodes = [td.root]
+
+        while(nodes):
+            n = nodes.pop()
+            n.vertices.append(a.n)
+
+
+            for c in n.children:
+                nodes.insert(0, c)
+
+
+
 
         # tdr.num_orig_vertices += 1
         # for n in a.ds.keys():
@@ -655,7 +668,7 @@ def arg_bd_sat(af, file, **kwargs):
 
     add_ds_to_td(tdr, af)
     if semantics.lower() == "adm":
-        add_ns_to_td(tdr, af)
+        add_ns_to_td(tdr, af, torso.tree_decomp)
     if semantics.lower() == "co":
         add_os_to_td(tdr, af)
     exchange_names(tdr, af)

@@ -349,8 +349,6 @@ class Problem:
                     cfg["nesthdb"]["threshold_abstract"]))
                 return self.final_result(self.solve_classic())
 
-
-
         return self.final_result(self.nestedpmc())
 
     def solve_rec(self, vars, clauses, non_nested, projected, depth=0, **kwargs):
@@ -398,8 +396,6 @@ def main_btw(cfg_btw, sat_file, td, torso, **kwargs):
     global cfg
     cfg = cfg_btw
 
-
-
     formula = Formula.from_file(sat_file)
     prob = Problem(formula, formula.vars, **kwargs)
     if td:
@@ -407,14 +403,12 @@ def main_btw(cfg_btw, sat_file, td, torso, **kwargs):
         # remove single vars from torso
 
         max_bagsize = 0
-
         for b in torso.tree_decomp.postorder():
             proj = formula.projected
             b.vertices = list(set(b.vertices) & proj)
             max_bagsize = max(len(b.vertices), max_bagsize)
 
         logger.debug("Maximum bag size: " + str(max_bagsize))
-
 
     main_common(prob)
 
