@@ -34,7 +34,7 @@
   "problem_specific": {
     "nestpmc": {
       "max_solver_threads": 12,
-      "inner_vars_threshold": 99999,
+      "inner_vars_threshold": 10,
       "max_worker_threads": 12
     },
     "pmcext": {
@@ -42,17 +42,14 @@
         "path": "ext/pmcext",
         "args": "-vivification -eliminateLit -litImplied -iterate=10 -equiv -orGate -affine"
       },
-      "sat_solver": {
-        "path": "ext/sat_solver",
-        "seed_arg": "-s"
-      },
+      
       "max_solver_threads": 12
     }
   },
   "nesthdb": {
     "threshold_hybrid": 99999,
-    "threshold_abstract": 99999,
-    "max_recursion_depth": 1,
+    "threshold_abstract": 0,
+    "max_recursion_depth": 2,
     "sharpsat_solver": {
       "path": "ext/sharpsat_solver",
       "args": "-C -c",
@@ -63,7 +60,12 @@
         },
         "result": "result"
       }
+	
     },
+	"sat_solver": {
+        "path": "ext/sat_solver",
+        "seed_arg": "-s"
+      },
     "pmc_solver": {
       "path": "<PATH-TO-PROJCLINGO>>/projClingo-wrapper-1.0",
       "output_parser": {

@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: future_fstrings -*-
+import networkx as nx
+
 
 class Argument:
     # attacks = []  # arguments attacked by this argument
@@ -42,10 +44,14 @@ def read_af(cfg, file, **kwargs):
     # read argumentation framework
     r = open(file)
     line = r.readline()
+    graph = nx.Graph()
 
     def add_argument(name):
         if (not arguments.__contains__(name)):  # add new argument
-            arguments[name] = Argument(name)
+            a = Argument(name)
+            arguments[name] = a
+            graph.add_node(a.thisArgument)
+
         return arguments[name]
 
     arguments = {}
@@ -67,10 +73,12 @@ def read_af(cfg, file, **kwargs):
             b = line.split(",")[1]
             aA = add_argument(a)
             bA = add_argument(b)
-            for ar in arguments.values():  # TODO optimize: remove loop
+
+            graph.add_edge(aA.thisArgument, bA.thisArgument)
+            for ar in arguments.values(): # TODO optimize: remove loop
                 ar.add_attack(aA, bA)
 
         line = r.readline()
 
     r.close()
-    return arguments, num_args, num_attacks
+    return arguments, num_args, num_attacks, graph

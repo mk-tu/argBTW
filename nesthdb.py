@@ -263,7 +263,6 @@ class Problem:
 
     def nestedpmc(self):
         global cfg
-
         pool = BlockingThreadedConnectionPool(1, cfg["db"]["max_connections"], **cfg["db"]["dsn"])
         problem_cfg = {}
         if "problem_specific" in cfg and "nestpmc" in cfg["problem_specific"]:
@@ -288,15 +287,17 @@ class Problem:
         self.nested_problem.setup()
         if interrupted:
             return -1
+
         self.nested_problem.solve()
         if interrupted:
             return -1
         return self.nested_problem.model_count
 
     def solve(self):
+        logger.info(f"Solve at depth: {self.depth}")
         logger.info(
             f"Original #vars: {self.formula.num_vars}, #clauses: {self.formula.num_clauses}, #projected: {len(self.projected_orig)}, depth: {self.depth}")
-        self.preprocess()
+        #self.preprocess()
         if self.maybe_sat == False:
             logger.info("Preprocessor UNSAT")
             return 0
@@ -323,6 +324,7 @@ class Problem:
         # if self.depth > 0 and ((len(self.projected) <= 64 and len(self.formula.clauses) <= 1500) or (len(self.projected) <= 32)):
         #    return self.final_result(self.solve_classic())
         if self.depth >= cfg["nesthdb"]["max_recursion_depth"]:
+            logger.info("Maximum recursion depth")
             return self.final_result(self.solve_classic())
 
         if hasattr(self, 'graph'):  # is tree decomposition already given (i.e. by argbtw)
@@ -333,21 +335,20 @@ class Problem:
 
         if interrupted:
             return -1
-
         if self.depth > 0 and self.graph.tree_decomp.tree_width >= cfg["nesthdb"][
             "threshold_hybrid"]:  # TODO OR PROJECTION SIZE BELOW TRESHOLD OR CLAUSE SIZE BELOW TRESHOLD
             logger.info("Tree width >= hybrid threshold ({})".format(cfg["nesthdb"]["threshold_hybrid"]))
             return self.final_result(self.solve_classic())
 
-        if (hasattr(self, 'graph') and self.graph.tree_decomp.tree_width >= cfg["nesthdb"]["threshold_abstract"]):
-            logger.info("Tree width >= abstract threshold ({})".format(cfg["nesthdb"]["threshold_abstract"]))
-            self.choose_subset()
-            logger.info(f"Subset #non-nested: {len(self.non_nested)}")
-            self.decompose_nested_primal()
-            if self.graph.tree_decomp.tree_width >= cfg["nesthdb"]["threshold_abstract"]:
-                logger.info("Tree width after abstraction >= abstract threshold ({})".format(
-                    cfg["nesthdb"]["threshold_abstract"]))
-                return self.final_result(self.solve_classic())
+        # if  False and self.graph.tree_decomp.tree_width >= cfg["nesthdb"]["threshold_abstract"]: # TODO False
+        #     logger.info("Tree width >= abstract threshold ({})".format(cfg["nesthdb"]["threshold_abstract"]))
+        #     self.choose_subset()
+        #     logger.info(f"Subset #non-nested: {len(self.non_nested)}")
+        #     #self.decompose_nested_primal()
+        #     if self.graph.tree_decomp.tree_width >= cfg["nesthdb"]["threshold_abstract"]:
+        #         logger.info("Tree width after abstraction >= abstract threshold ({})".format(
+        #             cfg["nesthdb"]["threshold_abstract"]))
+        #         return self.final_result(self.solve_classic())
 
         return self.final_result(self.nestedpmc())
 
@@ -392,12 +393,15 @@ def main():
     main_common(prob)
 
 
-def main_btw(cfg_btw, sat_file, td, torso, **kwargs):
+def main_btw(cfg_btw, sat_file, td, torso, bd = None, **kwargs):
     global cfg
     cfg = cfg_btw
 
     formula = Formula.from_file(sat_file)
-    prob = Problem(formula, formula.vars, **kwargs)
+    if bd == None:
+        prob = Problem(formula, formula.vars, **kwargs)
+    else:
+        prob = Problem(formula, bd, **kwargs)
     if td:
         prob.graph = torso
         # remove single vars from torso

@@ -643,7 +643,22 @@ def exchange_names(tdr, af):
         tdr.bags[b] = nums
 
 
-def arg_bd_sat(af, file, **kwargs):
+def calc_adj(af):
+    adj = {}
+    for a in af.values():
+        for b in a.attackedBy:
+            if a.thisArgument in adj:
+                adj[a.thisArgument].add(b.thisArgument)
+            else:
+                adj[a.thisArgument] = set([b.thisArgument])
+            if b.thisArgument in adj:
+                adj[b.thisArgument].add(a.thisArgument)
+            else:
+                adj[b.thisArgument] = set([a.thisArgument])
+    return adj
+
+
+def arg_bd_sat(af, graph, file, **kwargs):
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
 
@@ -653,10 +668,13 @@ def arg_bd_sat(af, file, **kwargs):
     compute_torso(file, os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
-
+    bd = torso.nodes
     logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
+    adj = calc_adj(af)
 
     add_remaining(tdr, torso, af)
+    torso = Graph(graph.nodes,graph.edges,adj)
+    torso.abstract(bd)
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
                                    None)
@@ -678,13 +696,16 @@ def arg_bd_sat(af, file, **kwargs):
 
     # for b in tdr.bags.values():
     #     b.sort()
+    backdoor = set()
+    for a in bd:
+        backdoor.add(af[a].thisArgument)
 
-    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, **kwargs)
+    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, backdoor, **kwargs)
 
 
-def solve(af, btw_method, **kwargs):
+def solve(af, graph,btw_method, **kwargs):
     if (btw_method.lower() == "arg_bd_sat"):
-        arg_bd_sat(af, **kwargs)
+        arg_bd_sat(af, graph, **kwargs)
     elif (btw_method.lower() == "sat_dp_only"):
         sat_dp_only(af, **kwargs)
 
@@ -699,11 +720,11 @@ def main():
 
     # read AF
     logger.info("Reading AF")
-    af, num_args, num_atts = read_af(cfg, **vars(args))
+    af, num_args, num_atts, graph = read_af(cfg, **vars(args))
 
     logger.info("Argumentation Framework with " + str(num_args) + " arguments and " + str(num_atts) + " attacks read")
 
-    solve(af, **vars(args))
+    solve(af,graph, **vars(args))
 
 
 if __name__ == "__main__":
