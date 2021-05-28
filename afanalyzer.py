@@ -67,7 +67,7 @@ def read(cfg, file, maxargs, **kwargs):
     # read argumentation framework
     r = open(file)
     line = r.readline()
-    graph = nx.Graph()
+    graph = nx.DiGraph()
 
     def add_argument(name):
         if (maxargs != 0 and len(arguments) > maxargs):
@@ -127,6 +127,7 @@ def main():
 
     atime = int(end - start)
     logger.info("Reading AF took " + str(atime) + " seconds")
+
 
     logger.info("Calculating backdoor...")
     start = timer()
