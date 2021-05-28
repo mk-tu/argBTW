@@ -162,7 +162,7 @@ def solve(g, ub, slv, verbose=False, timeout=0):
         cards[n] = tot
 
     def interrupt(s):
-        s.interrupt()
+        s.interrupt(solver)
 
     best_model = None
     with slv() as solver:

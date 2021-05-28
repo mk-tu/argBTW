@@ -56,7 +56,7 @@ def solve(g, ub, slv, verbose=False, timeout=0):
     best_model = None
 
     def interrupt(s):
-        s.interrupt()
+        s.interrupt(solver)
 
     with slv() as solver:
         timer = None
