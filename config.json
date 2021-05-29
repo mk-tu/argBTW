@@ -34,7 +34,7 @@
   "problem_specific": {
     "nestpmc": {
       "max_solver_threads": 12,
-      "inner_vars_threshold": 10,
+      "inner_vars_threshold": 20,
       "max_worker_threads": 12
     },
     "pmcext": {
@@ -49,7 +49,7 @@
   "nesthdb": {
     "threshold_hybrid": 99999,
     "threshold_abstract": 0,
-    "max_recursion_depth": 2,
+    "max_recursion_depth": 1,
     "sharpsat_solver": {
       "path": "ext/sharpsat_solver",
       "args": "-C -c",

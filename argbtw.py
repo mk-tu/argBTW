@@ -57,6 +57,7 @@ def setup_arg_parser(usage):
     gen_opts.add_argument("--btw-method", dest="btw_method", choices=_BTW_METHOD_STRINGS,
                           help="Method of backdoor treewidth computation", default="ARG_BD_SAT")
     gen_opts.add_argument("--argument", dest="argument", help="Argument for credulous or sketpical reasoning")
+    gen_opts.add_argument("--bd-timeout", dest="bd_timeout", help="Timeout in seconds for calculating the backdoor", type=int, default=20)
     gen_opts.add_argument("--task", dest="task", help="Argumention task as TASK-SEMANTICS", choices=_TASKS_STRINGS,
                           default="CE-ST")
 
@@ -112,11 +113,11 @@ def setup_logging(level="INFO"):
     logging.basicConfig(format='[%(levelname)s] %(name)s: %(message)s', level=level)
 
 
-def arg_to_backdoor(file):
+def arg_to_backdoor(file, bd_timeout, **kwargs):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
         [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
-         "--time-limit=10"],
+         "--time-limit="+str(bd_timeout)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
     bd = str(bd.splitlines()[0])
@@ -658,26 +659,33 @@ def calc_adj(af):
     return adj
 
 
+
 def arg_bd_sat(af, graph, file, **kwargs):
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
 
     logger.debug("Computing backdoor")
-    arg_to_backdoor(file)
+    arg_to_backdoor(file, **kwargs)
     logger.debug("Computing torso")
     compute_torso(file, os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
     bd = torso.nodes
+
     logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
     adj = calc_adj(af)
 
     add_remaining(tdr, torso, af)
     torso = Graph(graph.nodes,graph.edges,adj)
-    torso.abstract(bd)
+    bd_z = set([])
+    for a in bd:
+        bd_z.add(af[a].thisArgument)
+    torso.abstract(bd_z)
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
-                                   None)
+                                   torso.mg)
+
+
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
     decomp_guided_reduction(af, torso.tree_decomp, tdr, semantics)
@@ -690,17 +698,37 @@ def arg_bd_sat(af, graph, file, **kwargs):
     if semantics.lower() == "co":
         add_os_to_td(tdr, af)
     exchange_names(tdr, af)
+
+
+
+    torso.abstract(bd_z)
+
+
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
-                                   None)
+                                   torso.mg)
+    # set minor variables
+    for node in torso.tree_decomp.nodes:
+        for v in node.all_vertices:
+            if v in torso.mg.nodes:
+                node.minor_vertices.add(v)
+                node.vertices.remove(v)
+        node.num_vertices = set(node.vertices) # apparently
+        node.num_minor_vertices = len(node.minor_vertices)
+        node.num_all_vertices = len(node.all_vertices)
+        assert (len(node.num_vertices) + node.num_minor_vertices == node.num_all_vertices)
 
+    #
+    # for node in torso.tree_decomp.nodes: # todo
+    #     print(node.vertices)
+    #     print(node.minor_vertices)
+    #     print(node.all_vertices)
+    #     print("----------")
     # for b in tdr.bags.values():
     #     b.sort()
-    backdoor = set()
-    for a in bd:
-        backdoor.add(af[a].thisArgument)
 
-    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, backdoor, **kwargs)
+
+    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
 
 
 def solve(af, graph,btw_method, **kwargs):
