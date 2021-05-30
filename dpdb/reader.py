@@ -205,7 +205,7 @@ class CnfReader(DimacsReader):
                 continue
             else:
                 clause, lines = self.read_terminated(lines, line, lineno)
-                if len(clause) == 1:
+                if False and len(clause) == 1:                                   # TODO re-introduce single vars (deactivated because they cause bugs)
                     if -clause[0] in self.single_clauses:  # UNSAT
                         self.maybe_sat = False
                         self.models = 0
@@ -216,7 +216,7 @@ class CnfReader(DimacsReader):
 
         # simplify with single clauses, avoid copies, do it at most 10 times in a row
         iterate = 0
-        removed_singles = True  # set true
+        removed_singles = False  # set true  # TODO re-introduce single vars (deactivated because they cause bugs)
         while iterate < 10 and removed_singles:
             removed_singles = False
             i = 0
