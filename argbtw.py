@@ -1,10 +1,13 @@
-#!/usr/bin/env python3
+#!/home/hecher/miniconda3/bin/python3
+##/usr/bin/env python3
 # -*- coding: future_fstrings -*-
 import logging
 import sys
 import subprocess
 import argparse
 import os
+import time
+import random
 
 from future_fstrings import StreamReader
 
@@ -26,6 +29,7 @@ from nesthdb import main_btw, Graph
 
 logger = logging.getLogger("argbtw")
 
+tmp = "/tmp/{}_{}".format(time.time(),random.random())
 
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
@@ -114,6 +118,7 @@ def setup_logging(level="INFO"):
 
 
 def arg_to_backdoor(file, bd_timeout, **kwargs):
+    global tmp
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
         [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
@@ -125,7 +130,7 @@ def arg_to_backdoor(file, bd_timeout, **kwargs):
     p.stdin.close()
     p.wait()
 
-    f = open(os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
+    f = open(tmp + "bd.out", "w") #os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
 
     f.write(bd)
     f.close()
@@ -203,10 +208,12 @@ def sat_dp_only(af, file, argument, **kwargs):
             Argument.maxArgument) + " " + str(clauses) + "\n" + cnf
 
     # save in "argSat.cnf"
-    ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    #ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    ff = open(tmp + "argSat.cnf", "w")
     ff.write(cnf)
     ff.close()
-    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
+    #main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
+    main_btw(cfg, tmp + "argSat.cnf", None, None, **kwargs)
 
 
 def find_last_node(td, af, tdr):  # traverse the TD in preorder and find out last(a) for all a
@@ -470,7 +477,8 @@ def decomp_guided_reduction(af, td, tdr, semantics):
         logger.error("Unknown semantics")
         exit(1)
 
-    f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    #f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    f = open(tmp + "argSat.cnf", "w")
     cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
     f.close()
@@ -661,13 +669,14 @@ def calc_adj(af):
 
 
 def arg_bd_sat(af, graph, file, **kwargs):
+    global tmp
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
 
     logger.debug("Computing backdoor")
     arg_to_backdoor(file, **kwargs)
     logger.debug("Computing torso")
-    compute_torso(file, os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
+    compute_torso(file, tmp + "bd.out") #os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
     bd = torso.nodes
@@ -728,7 +737,8 @@ def arg_bd_sat(af, graph, file, **kwargs):
     #     b.sort()
 
 
-    main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
+    #main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
+    main_btw(cfg, tmp + "argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
 
 
 def solve(af, graph,btw_method, **kwargs):
