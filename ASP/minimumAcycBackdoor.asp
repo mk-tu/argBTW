@@ -10,7 +10,7 @@ path(X,Y) :- remaining(X),remaining(Y),att(X,Y).
 path(X,Y) :- remaining(Y),att(Z,Y),path(X,Z).
 
 
-
+backdoor(X) :- att(X,X).
 
 
 

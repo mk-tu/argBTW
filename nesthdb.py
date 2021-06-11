@@ -306,8 +306,8 @@ class Problem:
             return self.final_result(self.models)
 
         self.non_nested = self.non_nested.intersection(self.projected)
-        logger.info(
-            f"Preprocessing #vars: {self.formula.num_vars}, #clauses: {self.formula.num_clauses}, #projected: {len(self.projected)}")
+        #logger.info(
+        #    f"Preprocessing #vars: {self.formula.num_vars}, #clauses: {self.formula.num_clauses}, #projected: {len(self.projected)}")
 
         if not self.kwargs["no_cache"]:
             cached = self.get_cached()

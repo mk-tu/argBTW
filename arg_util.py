@@ -13,7 +13,7 @@ class Argument:
     ds = {}  # prop vars d belonging to the respective nodes in TD
     last_node = None  # last (nearest root) node this argument appears in (in TD)
     n = 0  # prop var n for adm reduction
-    ds = {}  # prop vars o belonging to the respective nodes in TD
+    os = {}  # prop vars o belonging to the respective nodes in TD
 
     thisArgument = 0  # identifier as in the cnf
 
@@ -75,8 +75,9 @@ def read_af(cfg, file, **kwargs):
             bA = add_argument(b)
 
             graph.add_edge(aA.thisArgument, bA.thisArgument)
-            for ar in arguments.values(): # TODO optimize: remove loop
-                ar.add_attack(aA, bA)
+            # for ar in arguments.values(): #
+            #     ar.add_attack(aA, bA)
+            bA.add_attack(aA, bA)
 
         line = r.readline()
 

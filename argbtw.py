@@ -29,7 +29,8 @@ from nesthdb import main_btw, Graph
 
 logger = logging.getLogger("argbtw")
 
-tmp = "/tmp/{}_{}".format(time.time(),random.random())
+tmp = "/tmp/{}_{}".format(time.time(), random.random())
+
 
 class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
@@ -61,7 +62,8 @@ def setup_arg_parser(usage):
     gen_opts.add_argument("--btw-method", dest="btw_method", choices=_BTW_METHOD_STRINGS,
                           help="Method of backdoor treewidth computation", default="ARG_BD_SAT")
     gen_opts.add_argument("--argument", dest="argument", help="Argument for credulous or sketpical reasoning")
-    gen_opts.add_argument("--bd-timeout", dest="bd_timeout", help="Timeout in seconds for calculating the backdoor", type=int, default=20)
+    gen_opts.add_argument("--bd-timeout", dest="bd_timeout", help="Timeout in seconds for calculating the backdoor",
+                          type=int, default=20)
     gen_opts.add_argument("--task", dest="task", help="Argumention task as TASK-SEMANTICS", choices=_TASKS_STRINGS,
                           default="CE-ST")
 
@@ -117,20 +119,26 @@ def setup_logging(level="INFO"):
     logging.basicConfig(format='[%(levelname)s] %(name)s: %(message)s', level=level)
 
 
-def arg_to_backdoor(file, bd_timeout, **kwargs):
+def arg_to_backdoor(af, file, bd_timeout, **kwargs):
     global tmp
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
-        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
-         "--time-limit="+str(bd_timeout)],
+        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1",
+         os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
+         "--time-limit=" + str(bd_timeout)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
     bd = str(bd.splitlines()[0])
     bd = bd.replace("b'", "").replace("'", "")
     p.stdin.close()
     p.wait()
+    if (bd == "UNKNOWN"):  # clingo timeout, make all arguments backdoor args
+        bd = ""
+        for a in af.values():
+            bd += "backdoor(" + a.name + "). "
+        bd += "backdoorsize(" + str(len(af)) + ")."
 
-    f = open(tmp + "bd.out", "w") #os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
+    f = open(tmp + "bd.out", "w")  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
 
     f.write(bd)
     f.close()
@@ -155,16 +163,19 @@ def arg_to_backdoor(file, bd_timeout, **kwargs):
 
 def compute_torso(file, bd):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
+
     p = subprocess.Popen(
-        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1", os.path.dirname(os.path.realpath(__file__)) + "/ASP/torso.asp", file, bd],
+        [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1",
+         os.path.dirname(os.path.realpath(__file__)) + "/ASP/torso.asp", file, bd],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
     bd = str(bd.splitlines()[0])
     bd = bd.replace("b'", "").replace("'", "")
     p.stdin.close()
     p.wait()
-
-    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "w")
+    # f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "w")
+    f = open(tmp + "torso.out", "w")
+    logger.debug("Torso out: " + tmp + "torso.out")
     bd = bd.replace(" ", "\n")
     f.write(bd)
     f.close()
@@ -208,24 +219,32 @@ def sat_dp_only(af, file, argument, **kwargs):
             Argument.maxArgument) + " " + str(clauses) + "\n" + cnf
 
     # save in "argSat.cnf"
-    #ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    # ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
     ff = open(tmp + "argSat.cnf", "w")
     ff.write(cnf)
     ff.close()
-    #main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
+    # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
     main_btw(cfg, tmp + "argSat.cnf", None, None, **kwargs)
 
 
-def find_last_node(td, af, tdr):  # traverse the TD in preorder and find out last(a) for all a
+def find_last_node(td, af, tdr, bd):  # traverse the TD in preorder and find out last(a) for all a
     nodes = [td.root]
     visited = []
     d_number = len(af) + 1
+    d_dict = {}
 
     while nodes:
         node = nodes.pop()
         for v in node.vertices:
-            af[v].ds[node] = d_number
-            d_number += 1
+
+            if (af[v].thisArgument in bd):  # add arguments d only if the argument is a backdoor arg
+                af[v].ds[node] = d_number
+
+                if (node.id not in d_dict.keys()):
+                    d_dict[node.id] = []
+                d_dict[node.id].append(d_number)
+
+                d_number += 1
 
             # rint(str(v)+"\tin node \t"+str(node.id)+"\td\t"+str(d_number-1))
 
@@ -240,10 +259,10 @@ def find_last_node(td, af, tdr):  # traverse the TD in preorder and find out las
         for c in node.children:
             nodes.insert(0, c)
 
-    return d_number - 1
+    return d_number - 1, d_dict
 
 
-def decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf, bd):
     # dta -> V dta v V a
     # dta <- V dta v V a
     nodes = [td.root]
@@ -251,12 +270,16 @@ def decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf):
     while (len(nodes) > 0):
         node = nodes.pop()
         for v in node.vertices:
+            if (af[v].thisArgument not in bd):  # does probably not work for adm TODO
+                continue
             # <->
             dta = str(af[v].ds[node])
             right_arrow = ""
             right_arrow += "-" + dta + " "
             for at in af[v].attackedBy:
-                if node not in at.ds.keys():
+                # if node not in at.ds.keys():
+                #     continue
+                if at.name not in node.vertices:
                     continue
                 right_arrow += str(at.thisArgument) + " "
                 cnf += dta + " -" + str(at.thisArgument) + " 0\n"
@@ -297,15 +320,25 @@ def decomp_guided_reduction_2(af, td, tdr, cnf, clauses, debug_cnf):
     return clauses, cnf
 
 
-def decomp_guided_reduction_3(af, td, tdr, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_3(af, td, tdr, cnf, clauses, debug_cnf, bd):
     # a OR d_a^last(a)
     for arg in af.values():
-        # a OR d_a^last(a)
-        cnf += str(arg.thisArgument) + " " + str(arg.ds[arg.last_node]) + " 0\n"
-        if debug_cnf:
-            cnf += "c\t (3)\n"
+        if (arg.thisArgument in bd):
+            # a OR d_a^last(a)
+            cnf += str(arg.thisArgument) + " " + str(arg.ds[arg.last_node]) + " 0\n"
+            clauses += 1
+            if debug_cnf:
+                cnf += "c\t (3)\n"
 
-        clauses += 1
+        else:  # stable combination of (1) and (3) for non bd variables
+            cnf += str(arg.thisArgument) + " "
+            for b in arg.attackedBy:
+                cnf += str(b.thisArgument) + " "
+
+            cnf += "0\n"
+            if debug_cnf:
+                cnf += "c\t (3) alternative for non bd\n"
+            clauses += 1
     return clauses, cnf
 
 
@@ -446,20 +479,20 @@ def add_o(af, td, tdr, variables):
     return o_number - 1
 
 
-def decomp_guided_reduction(af, td, tdr, semantics):
+def decomp_guided_reduction(af, td, tdr, semantics, bd):
     cnf = ""
     # find last(a)
     debug_cnf = False
-    variables = find_last_node(td, af, tdr)
+    variables, d_dict = find_last_node(td, af, tdr, bd)
     clauses = 0
 
     if semantics.lower() == "st":
-        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf)
+        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_2(af, td, tdr, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_3(af, td, tdr, cnf, clauses, debug_cnf)
+        clauses, cnf = decomp_guided_reduction_3(af, td, tdr, cnf, clauses, debug_cnf, bd)
     elif semantics.lower() == "adm":
         variables = add_n(af, variables)
-        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf)
+        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_2(af, td, tdr, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_4(af, td, tdr, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_5(af, td, tdr, cnf, clauses, debug_cnf)
@@ -467,7 +500,7 @@ def decomp_guided_reduction(af, td, tdr, semantics):
         clauses, cnf = decomp_guided_reduction_7(af, td, tdr, cnf, clauses, debug_cnf)
     elif semantics.lower() == "co":
         variables = add_o(af, td, tdr, variables)
-        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf)
+        clauses, cnf = decomp_guided_reduction_1(af, td, tdr, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_2(af, td, tdr, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_8(af, td, tdr, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_9(af, td, tdr, cnf, clauses, debug_cnf)
@@ -477,11 +510,13 @@ def decomp_guided_reduction(af, td, tdr, semantics):
         logger.error("Unknown semantics")
         exit(1)
 
-    #f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+    # f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
     f = open(tmp + "argSat.cnf", "w")
     cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
     f.close()
+
+    return d_dict
 
 
 def compute_torso_graph(af):
@@ -501,7 +536,8 @@ def compute_torso_graph(af):
     adj = {}
     num_vertices = 0
 
-    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
+    # f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
+    f = open(tmp + "torso.out", "r")
     line = f.readline()
     while line:
         line = line.replace(").", "")
@@ -550,7 +586,8 @@ def decompose_torso(file, kwargs, af):
 
 
 def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to the respective bags
-    f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
+    # f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
+    f = open(tmp + "torso.out", "r")
     line = f.readline()
 
     adj = {}
@@ -575,6 +612,8 @@ def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to t
     if len(adj) < len(af) - len(
             torso.nodes):  # not all arguments are adjacent to a backdoor -> add remaining to new bag
         rems = af.keys() - torso.nodes - adj.keys()
+        logger.debug("Adding "+str(len(rems))+" arguments not adjacent to backdoor in extra bag")
+
 
         tdr.num_bags += 1
         tdr.bags[tdr.num_bags] = [x for x in rems]
@@ -609,20 +648,16 @@ def add_ns_to_td(tdr, af, td):
     # adds the additional n vars to their respective nodes
     for a in af.values():
         # a.last_node.vertices.append(a.n)
-        #tdr.num_orig_vertices += 1
+        # tdr.num_orig_vertices += 1
 
         nodes = [td.root]
 
-        while(nodes):
+        while (nodes):
             n = nodes.pop()
             n.vertices.append(a.n)
 
-
             for c in n.children:
                 nodes.insert(0, c)
-
-
-
 
         # tdr.num_orig_vertices += 1
         # for n in a.ds.keys():
@@ -667,16 +702,15 @@ def calc_adj(af):
     return adj
 
 
-
 def arg_bd_sat(af, graph, file, **kwargs):
     global tmp
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
 
     logger.debug("Computing backdoor")
-    arg_to_backdoor(file, **kwargs)
+    arg_to_backdoor(af, file, **kwargs)
     logger.debug("Computing torso")
-    compute_torso(file, tmp + "bd.out") #os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
+    compute_torso(file, tmp + "bd.out")  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(file, kwargs, af)
     bd = torso.nodes
@@ -685,19 +719,19 @@ def arg_bd_sat(af, graph, file, **kwargs):
     adj = calc_adj(af)
 
     add_remaining(tdr, torso, af)
-    torso = Graph(graph.nodes,graph.edges,adj)
+    torso = Graph(graph.nodes, graph.edges, adj)
     bd_z = set([])
     for a in bd:
         bd_z.add(af[a].thisArgument)
+
     torso.abstract(bd_z)
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
                                    torso.mg)
 
-
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
-    decomp_guided_reduction(af, torso.tree_decomp, tdr, semantics)
+    d_dict = decomp_guided_reduction(af, torso.tree_decomp, tdr, semantics, bd_z)
 
     # change argument names to argument numbers
 
@@ -708,40 +742,60 @@ def arg_bd_sat(af, graph, file, **kwargs):
         add_os_to_td(tdr, af)
     exchange_names(tdr, af)
 
-
-
     torso.abstract(bd_z)
-
 
     torso.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
                                    tdr.adjacency_list,
                                    torso.mg)
+
     # set minor variables
     for node in torso.tree_decomp.nodes:
         for v in node.all_vertices:
-            if v in torso.mg.nodes:
-                node.minor_vertices.add(v)
-                node.vertices.remove(v)
-        node.num_vertices = set(node.vertices) # apparently
+            if v not in bd_z:
+                if node.id not in d_dict.keys() or v not in d_dict[node.id]:
+                    node.minor_vertices.add(v)
+                    node.vertices.remove(v)
+        node.num_vertices = set(node.vertices)  # apparently
         node.num_minor_vertices = len(node.minor_vertices)
         node.num_all_vertices = len(node.all_vertices)
+
+        if len(node.vertices) == 0 and len(node.minor_vertices) > 0:
+            node.vertices.append(node.minor_vertices.pop())
+
         assert (len(node.num_vertices) + node.num_minor_vertices == node.num_all_vertices)
 
     #
-    # for node in torso.tree_decomp.nodes: # todo
+    # for node in torso.tree_decomp.nodes:  # todo
+    #     print("NODE: " + str(node.id))
+    #     print(node.parent)
     #     print(node.vertices)
     #     print(node.minor_vertices)
     #     print(node.all_vertices)
     #     print("----------")
     # for b in tdr.bags.values():
     #     b.sort()
+    logger.debug("CNF saved as: " + tmp + "argSat.cnf")
 
+    # print_variables(af, bd, bd_z)
 
-    #main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
+    # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
     main_btw(cfg, tmp + "argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
 
 
-def solve(af, graph,btw_method, **kwargs):
+def print_variables(af, bd, bd_z):
+    print("Backdoor:")
+    print(bd)
+    print(bd_z)
+
+    for arg in af.values():
+        a = ""
+        a = a + (arg.name + " " + str(arg.thisArgument) + "\tds: ")
+        for d in arg.ds.keys():
+            a = a + str(d.id) + "=" + str(arg.ds[d]) + "\t"
+        print(a)
+
+
+def solve(af, graph, btw_method, **kwargs):
     if (btw_method.lower() == "arg_bd_sat"):
         arg_bd_sat(af, graph, **kwargs)
     elif (btw_method.lower() == "sat_dp_only"):
@@ -762,7 +816,7 @@ def main():
 
     logger.info("Argumentation Framework with " + str(num_args) + " arguments and " + str(num_atts) + " attacks read")
 
-    solve(af,graph, **vars(args))
+    solve(af, graph, **vars(args))
 
 
 if __name__ == "__main__":
