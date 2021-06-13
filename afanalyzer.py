@@ -11,7 +11,6 @@ import acyclicity_bd
 import treewidth
 import acyclicity_bd_tw
 from common import *
-from argbtw import read_af
 from dpdb.db import BlockingThreadedConnectionPool, DEBUG_SQL, setup_debug_sql, DBAdmin
 from timeit import default_timer as timer
 from pysat.solvers import Glucose3, Solver
@@ -77,7 +76,7 @@ def read(cfg, file, maxargs, **kwargs):
         if (not arguments.__contains__(name)):  # add new argument
             a = Argument(name)
             arguments[name] = a
-            graph.add_node(a.thisArgument)
+            graph.add_node(a.atom)
 
         return arguments[name]
 
@@ -101,7 +100,7 @@ def read(cfg, file, maxargs, **kwargs):
             aA = add_argument(a)
             bA = add_argument(b)
 
-            graph.add_edge(aA.thisArgument, bA.thisArgument)
+            graph.add_edge(aA.atom, bA.atom)
 
         line = r.readline()
 

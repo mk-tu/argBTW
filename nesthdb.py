@@ -305,6 +305,7 @@ class Problem:
             logger.info(f"Solved by preprocessor: {self.models} models")
             return self.final_result(self.models)
 
+
         self.non_nested = self.non_nested.intersection(self.projected)
         #logger.info(
         #    f"Preprocessing #vars: {self.formula.num_vars}, #clauses: {self.formula.num_clauses}, #projected: {len(self.projected)}")
@@ -401,7 +402,7 @@ def main_btw(cfg_btw, sat_file, td, torso, bd = None, **kwargs):
     if bd == None:
         prob = Problem(formula, formula.vars, **kwargs)
     else:
-        prob = Problem(formula, bd, **kwargs)
+        prob = Problem(formula, set(bd), **kwargs)
     if td:
         prob.graph = torso
         # remove single vars from torso
