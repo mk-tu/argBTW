@@ -61,6 +61,8 @@ class Node(object):
         self.parent = None
         self.children = []
         self._vertex_child_map = {v: [] for v in vertices}
+
+
         assert (len(set(minor_vertices).intersection(vertices) ) == 0)
 
     def __str__(self):

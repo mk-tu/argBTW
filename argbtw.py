@@ -8,6 +8,7 @@ import argparse
 import os
 import time
 import random
+import copy
 
 from future_fstrings import StreamReader
 
@@ -24,7 +25,7 @@ from dpdb.reader import TdReader, Reader
 from dpdb.writer import StreamWriter, FileWriter
 from dpdb.treedecomp import TreeDecomp
 from dpdb.problem import args
-from arg_util import *
+from arg_util import read_af, reverse_dict
 from nesthdb import main_btw, Graph
 
 logger = logging.getLogger("argbtw")
@@ -124,7 +125,7 @@ def arg_to_backdoor(af, file, bd_timeout, **kwargs):
     # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
     p = subprocess.Popen(
         [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1",
-         os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", tmp+"af.apx",
+         os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", tmp + "af.apx",
          "--time-limit=" + str(bd_timeout)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd = p.stdout.read()
@@ -165,7 +166,7 @@ def compute_torso():
     bd_file = tmp + "bd.out"
     p = subprocess.Popen(
         [cfg["clingo"]["path"], "--out-atomf=%s.", "-V0", "--quiet=1",
-         os.path.dirname(os.path.realpath(__file__)) + "/ASP/torso.asp", tmp+"af.apx", bd_file],
+         os.path.dirname(os.path.realpath(__file__)) + "/ASP/torso.asp", tmp + "af.apx", bd_file],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     bd_file = p.stdout.read()
     bd_file = str(bd_file.splitlines()[0])
@@ -226,59 +227,65 @@ def sat_dp_only(af, file, argument, **kwargs):
     main_btw(cfg, tmp + "argSat.cnf", None, None, **kwargs)
 
 
-def find_last_node(td, af, bd):  # traverse the TD in preorder and find out last(a) for all a
+def find_last_node(tdr, af, bd):  # traverse the TD in preorder and find out last(a) for all a
+    td = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, copy.deepcopy(tdr.bags),
+                    tdr.adjacency_list,
+                    None)  # just to traverse tdr easier (deep copy so that the vertices lists are not updated)
+    d_number = len(af) + 1
+
     nodes = [td.root]
     visited = []
-    d_number = len(af) + 1
+
+    ds = []
 
     while nodes:
         node = nodes.pop()
-        for v in node.vertices:
-
-            if (v in bd):  # add arguments d only if the argument is a backdoor arg
+        for v in node.vertices:  # and v not in ds:
+            if v in bd:  # add arguments d only if the argument is a backdoor arg
                 a = reverse_dict[v]
-                a.ds[node] = d_number
+                a.ds[node.id] = d_number
+                ds.append(d_number)
 
+                tdr.bags[node.id].append(d_number)
+                tdr.num_orig_vertices += 1
+
+                if node.parent and v in node.parent.vertices:
+                    tdr.bags[node.parent.id].append(d_number)
 
 
                 d_number += 1
 
-            # rint(str(v)+"\tin node \t"+str(node.id)+"\td\t"+str(d_number-1))
-
-            # tdr.bags[node.id].append(d_number)
-            # if(node.parent):
-            #     tdr.bags[node.parend.id].append(d_number)
-
             if (v not in visited):
                 visited.append(v)
                 a = reverse_dict[v]
-                a.last_node = node
+                a.last_node = node.id
 
         for c in node.children:
             nodes.insert(0, c)
 
-    return d_number - 1
+    return d_number - 1, ds
 
 
 def decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd):
     # dta -> V dta v V a
     # dta <- V dta v V a
+
     nodes = [td.root]
 
     while (len(nodes) > 0):
         node = nodes.pop()
-        for v in node.vertices:
+        for v in set(node.vertices).intersection(bd):
             a = reverse_dict[v]
             if (a.atom not in bd):  # does probably not work for adm TODO
                 continue
             # <->
-            dta = str(a.ds[node])
+            dta = str(a.ds[node.id])
             right_arrow = ""
             right_arrow += "-" + dta + " "
             for at in a.attacked_by():
                 # if node not in at.ds.keys():
                 #     continue
-                if at not in node.vertices:
+                if at not in node.all_vertices:
                     continue
                 right_arrow += str(at) + " "
                 cnf += dta + " -" + str(at) + " 0\n"
@@ -287,9 +294,9 @@ def decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd):
                     cnf += "c\t (1) <= attacker)\n"
 
             for c in node.children:
-                if c in a.ds.keys():
-                    right_arrow += str(a.ds[c]) + " "
-                    cnf += dta + " -" + str(a.ds[c]) + " 0\n"
+                if c.id in a.ds.keys():
+                    right_arrow += str(a.ds[c.id]) + " "
+                    cnf += dta + " -" + str(a.ds[c.id]) + " 0\n"
                     clauses += 1
                     if debug_cnf:
                         cnf += "c\t (1) <= dta child)\n"
@@ -478,33 +485,18 @@ def add_o(af, td, variables):
     return o_number - 1
 
 
-def decomp_guided_reduction(af, td, semantics, bd):
+def decomp_guided_reduction(af, td, semantics, bd, variables):
     cnf = ""
     # find last(a)
     debug_cnf = False
-    variables = find_last_node(td, af, bd)
+
     clauses = 0
 
     if semantics.lower() == "st":
         clauses, cnf = decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_2(af, td, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_3(af, td, cnf, clauses, debug_cnf, bd)
-    elif semantics.lower() == "adm":
-        variables = add_n(af, variables)
-        clauses, cnf = decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd)
-        clauses, cnf = decomp_guided_reduction_2(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_4(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_7(af, td, cnf, clauses, debug_cnf)
-    elif semantics.lower() == "co":
-        variables = add_o(af, td, variables)
-        clauses, cnf = decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd)
-        clauses, cnf = decomp_guided_reduction_2(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_8(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_9(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_10(af, td, cnf, clauses, debug_cnf)
-        clauses, cnf = decomp_guided_reduction_11(af, td, cnf, clauses, debug_cnf)
+
     else:
         logger.error("Unknown semantics")
         exit(1)
@@ -514,7 +506,6 @@ def decomp_guided_reduction(af, td, semantics, bd):
     cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
     f.close()
-
 
 
 def compute_torso_graph(af):
@@ -583,7 +574,7 @@ def decompose_torso(kwargs, af):
     return tdr, torso
 
 
-def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to the respective bags
+def add_remaining(tdr, bd, af):  # adds the remaining adjacent arguments to the respective bags
     # f = open(os.path.dirname(os.path.realpath(__file__)) + "/torso.out", "r")
     f = open(tmp + "torso.out", "r")
     line = f.readline()
@@ -608,14 +599,13 @@ def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to t
 
     f.close()
     if len(adj) < len(af) - len(
-            torso.nodes):  # not all arguments are adjacent to a backdoor -> add remaining to root bag
+            bd):  # not all arguments are adjacent to a backdoor -> add remaining to root bag
 
         atoms = {a.atom for a in af.values()}
-        rems = atoms - set(torso.nodes) - set(adj.keys())
+        rems = atoms - set(bd) - set(adj.keys())
         logger.debug(f"Adding {len(rems)} arguments not adjacent to backdoor in root bag")
 
-
-        tdr.bags[tdr.root].extend([x for x in rems])
+        tdr.bags[tdr.root].extend(list(rems))
         tdr.num_orig_vertices += len(rems)
 
     # add remaining argument to the first bag that contains all its adjacent backdoor arguments
@@ -626,24 +616,6 @@ def add_remaining(tdr, torso, af):  # adds the remaining adjacent arguments to t
                 tdr.num_orig_vertices += 1
                 break
 
-
-def add_ds_to_td(tdr, af):
-    # adds the additional d vars to their respective nodes and their parents
-    ds = set()
-    d_dict = {}
-
-    for a in af.values():
-
-        for n in a.ds.keys():
-            n.vertices.append(a.ds[n])
-            tdr.num_orig_vertices += 1
-            if (n.parent):
-                n.parent.vertices.append(a.ds[n])
-                ds.add(a.ds[n])
-            if (n.id not in d_dict.keys()):
-                d_dict[n.id] = []
-            d_dict[n.id].append(a.ds[n])
-    return ds, d_dict
 
 def add_ns_to_td(tdr, af, td):
     # adds the additional n vars to their respective nodes
@@ -688,9 +660,13 @@ def exchange_names(tdr, af):
         tdr.bags[b] = nums
 
 
-def calc_adj(af):
+def calc_adj(af, graph):
     adj = {}
     for a_arg in af.values():
+        for d in a_arg.ds.values():
+            graph.add_node(d)
+            graph.add_edge(d, a_arg.atom)
+
         a = a_arg.atom
         for b in a_arg.attacked_by():
             if a in adj:
@@ -701,6 +677,14 @@ def calc_adj(af):
                 adj[b].add(a)
             else:
                 adj[b] = {a}
+
+        for d in a_arg.ds.values():
+            if a in adj:
+                adj[a].add(d)
+            else:
+                adj[a] = {d}
+            adj[d] = {a}
+
     return adj
 
 
@@ -716,91 +700,62 @@ def arg_bd_sat(af, graph, file, **kwargs):
     logger.debug("Torso tree decomposition")
     tdr, torso = decompose_torso(kwargs, af)
     bd = torso.nodes
-    logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
-    adj = calc_adj(af)
-
-    add_remaining(tdr, torso, af)
-
-    ds, d_dict = add_ds_to_td(tdr, af)
-
-    af_graph = Graph(graph.nodes, graph.edges, adj)
-
-    af_graph.abstract(bd)
-
-    atoms = {a.atom for a in af.values()}
-    nested = atoms - set(bd)
-
-    # set minor variables
-
-
-    mg = af_graph.mg
-    # for n in mg.nodes:
-    #     print(n)
-    #
-    # for e in mg.edges:
-    #     print(e)
-
-    af_graph.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
-                                   tdr.adjacency_list,
-                                    None)
-                                   # af_graph.mg)
-
-
-
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
-    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd)
+
+    variables, ds = find_last_node(tdr, af, bd)
+
+    logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
+
+    # add_remaining(tdr, bd, af)
+
+    d_graph = copy.deepcopy(graph)
+
+    adj = calc_adj(af, d_graph)
+
+    af_graph = Graph(d_graph.nodes, d_graph.edges, adj)  # af with d adjacent to their arguments
+
+    non_nested = bd + ds
+
+    af_graph.abstract(non_nested)
+
+    af_graph.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
+                                      tdr.adjacency_list,
+                                      af_graph.mg)
+
+    #print_variables(af, bd, af_graph)
+    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables)
 
 
-    # if semantics.lower() == "adm":
-    #     add_ns_to_td(tdr, af, af_graph.tree_decomp)
-    # if semantics.lower() == "co":
-    #     add_os_to_td(tdr, af)
 
-    for node in af_graph.tree_decomp.nodes:
-        for v in node.all_vertices:
-            if v not in bd:
-                if node.id not in d_dict.keys() or v not in d_dict[node.id]:
-                    node.minor_vertices.add(v)
-                    node.vertices.remove(v)
-        node.num_vertices = set(node.vertices)  # apparently
-        node.num_minor_vertices = len(node.minor_vertices)
-        node.num_all_vertices = len(node.all_vertices)
-
-        if len(node.vertices) == 0 and len(node.minor_vertices) > 0:
-            node.vertices.append(node.minor_vertices.pop())
-
-        assert (len(node.num_vertices) + node.num_minor_vertices == node.num_all_vertices)
-
+    # atoms = {a.atom for a in af.values()}
+    # nested = atoms - set(bd)
 
     #
-    # for node in torso.tree_decomp.nodes:  # todo
-    #     print("NODE: " + str(node.id))
-    #     print(node.parent)
-    #     print(node.vertices)
-    #     print(node.minor_vertices)
-    #     print(node.all_vertices)
-    #     print("----------")
-    # for b in tdr.bags.values():
-    #     b.sort()
+    # set minor variables
+
     logger.debug("CNF saved as: " + tmp + "argSat.cnf")
 
-    # print_variables(af, bd, bd_z)
-
     # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
-    main_btw(cfg, tmp + "argSat.cnf", af_graph.tree_decomp, af_graph, bd, **kwargs)
+    main_btw(cfg, tmp + "argSat.cnf", True, af_graph, bd, **kwargs)
 
 
-def print_variables(af, bd, bd_z):
+def print_variables(af, bd, af_graph):
+    for node in af_graph.tree_decomp.nodes:  # todo
+        print("NODE: " + str(node.id))
+        print(node.parent)
+        print(node.vertices)
+        print(node.minor_vertices)
+        print(node.all_vertices)
+        print("----------")
     print("Backdoor:")
     print(bd)
-    print(bd_z)
 
     for arg in af.values():
         a = ""
         a = a + (arg.name + " " + str(arg.atom) + "\tds: ")
         for d in arg.ds.keys():
-            a = a + str(d.id) + "=" + str(arg.ds[d]) + "\t"
+            a = a + str(d) + "=" + str(arg.ds[d]) + "\t"
         print(a)
 
 

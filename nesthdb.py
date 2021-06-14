@@ -411,6 +411,7 @@ def main_btw(cfg_btw, sat_file, td, torso, bd = None, **kwargs):
         for b in torso.tree_decomp.postorder():
             proj = formula.projected
             b.vertices = list(set(b.vertices) & proj)
+            b.num_vertices = b.vertices
             max_bagsize = max(len(b.vertices), max_bagsize)
 
         logger.debug("Maximum bag size: " + str(max_bagsize))
