@@ -1,7 +1,6 @@
 import logging
 import re
 import sys
-import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +204,7 @@ class CnfReader(DimacsReader):
                 continue
             else:
                 clause, lines = self.read_terminated(lines, line, lineno)
-                if False and len(clause) == 1:                                   # TODO re-introduce single vars (deactivated because they cause bugs)
+                if len(clause) == 1:
                     if -clause[0] in self.single_clauses:  # UNSAT
                         self.maybe_sat = False
                         self.models = 0
@@ -216,7 +215,7 @@ class CnfReader(DimacsReader):
 
         # simplify with single clauses, avoid copies, do it at most 10 times in a row
         iterate = 0
-        removed_singles = False  # set true  # TODO re-introduce single vars (deactivated because they cause bugs)
+        removed_singles = True
         while iterate < 10 and removed_singles:
             removed_singles = False
             i = 0
@@ -247,15 +246,16 @@ class CnfReader(DimacsReader):
 
         for clause in self.clauses:
             self.vars.update([abs(lit) for lit in clause])
+
+
         if len(self.vars) == 0:
             logger.info("Cnf trivial - solved by Pre-pre-processor")
             if self.maybe_sat:
-                logger.info("Models: 1")
+                logger.info("Models: 1") # TODO
             else:
                 logger.info("Models: 0")
             exit(0)
         maxvar = max(maxvar, max(self.vars))
-
         self.single_vars = set((abs(l) for l in self.single_clauses))
         self.projected = self.projected.difference(self.single_vars)
 

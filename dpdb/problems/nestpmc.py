@@ -105,6 +105,7 @@ class NestPmc(Problem):
                 [" OR ".join([lit2expr2(node,c,minor_vertices) for c in clause]) for clause in cur_cl]
             ))
             f += ")"
+            f = f.replace("()","TRUE")
         return f
         #return filter(self.var_clause_dict, node)
 
