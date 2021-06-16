@@ -15,7 +15,7 @@ from dpdb.db import BlockingThreadedConnectionPool, DEBUG_SQL, setup_debug_sql, 
 from timeit import default_timer as timer
 from pysat.solvers import Glucose3, Solver
 import networkx as nx
-from arg_util import *
+from arg_util import Argument
 
 logger = logging.getLogger("afanalyzer")
 
@@ -37,7 +37,8 @@ def setup_arg_parser(usage):
     # general options
     gen_opts = parser.add_argument_group("general options", "General options")
     gen_opts.add_argument("--t", dest="timeout", help="timeout", default="0", type=int)
-    gen_opts.add_argument("--m", dest="maxargs", help="maximum number of arguments", default="0", type=int)
+    gen_opts.add_argument("--m", dest="maxargs", help="maximum number of arguments", default="0", type=int)   # max and min to just test AFs of x<size<y
+    gen_opts.add_argument("--min", dest="minargs", help="minimum number of arguments", default="0", type=int)
     gen_opts.add_argument("--log-level", dest="log_level", help="Log level", choices=_LOG_LEVEL_STRINGS, default="INFO")
 
     return parser
@@ -61,7 +62,7 @@ def setup_logging(level="INFO"):
     logging.basicConfig(format='[%(levelname)s] %(name)s: %(message)s', level=level)
 
 
-def read(cfg, file, maxargs, **kwargs):
+def read(cfg, file, maxargs, minargs, **kwargs):
     # reads the given AF
     # read argumentation framework
     r = open(file)
@@ -105,8 +106,41 @@ def read(cfg, file, maxargs, **kwargs):
         line = r.readline()
 
     r.close()
+    if( num_args < minargs):
+        logger.info(f"Abort, too few arguments ({num_args}).")
+        exit(1)
     return arguments, num_args, num_attacks, graph
 
+
+
+def arg_to_backdoor(af, timeout, file):
+    global tmp
+    # clingo --out-atomf=%s. -V0 --quiet=1 minimumAcycBackdoor.asp <input> --time-limit=100 |head -n 1 > bd.out
+    p = subprocess.Popen(
+        ["ext/clingo", "--out-atomf=%s.", "-V0", "--quiet=1",
+         os.path.dirname(os.path.realpath(__file__)) + "/ASP/minimumAcycBackdoor.asp", file,
+         "--time-limit=" + str(timeout)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    bd = p.stdout.read()
+    bd = str(bd.splitlines()[0])
+    bd = bd.replace("b'", "").replace("'", "")
+    p.stdin.close()
+    p.wait()
+    if (bd == "UNKNOWN"):  # clingo timeout, make all arguments backdoor args
+        bd = ""
+        for a in af.values():
+            bd += "backdoor(" + a.name + "). "
+        bd += "backdoorsize(" + str(len(af)) + ")."
+
+
+    bd = bd.replace("backdoorsize(","").replace(").","")
+    spl = bd.split(" ")
+    bdsize = spl[len(spl)-1]
+    backdoor = bd.replace("backdoor","")
+    logger.info(f"ASP Backdoor: {backdoor}")
+
+
+    return bdsize
 
 def main():
     # handle arguments
@@ -115,6 +149,7 @@ def main():
     args = parse_args(arg_parser)
 
     timeout = int(args.timeout)
+    file = args.file
 
     # read AF
     logger.info("Reading AF...")
@@ -128,7 +163,18 @@ def main():
     logger.info("Reading AF took " + str(atime) + " seconds")
 
 
-    logger.info("Calculating backdoor...")
+    logger.info("Calculating backdoor with ASP encoding...")
+    start = timer()
+    bd1 = arg_to_backdoor(af, timeout, file)
+    bdsize1 = bd1
+    logger.info("Backdoor size: " + str(bdsize1))
+    end = timer()
+
+    asptime = int(end - start)
+    logger.info("Calculating backdoor took " + str(asptime) + " seconds")
+
+
+    logger.info("Calculating backdoor with SAT encoding...")
     start = timer()
     bd = acyclicity_bd.solve(graph, num_args - 1, Glucose3, timeout=timeout)
     logger.info("Backdoor: " + str(bd))
@@ -168,10 +214,12 @@ def main():
     logger.info(args.file + "\t" +
                 str(num_args) + "\t" +
                 str(num_atts) + "\t" +
+                str(asptime) + "\t" +
                 str(atime) + "\t" +
                 str(btime) + "\t" +
                 str(ctime) + "\t" +
                 str(dtime) + "\t" +
+                str(bdsize1) + "\t" +
                 str(bdsize) + "\t" +
                 str(tw) + "\t" +
                 str(bd[2]) + "\t" +

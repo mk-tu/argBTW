@@ -38,8 +38,8 @@ class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptio
 
 
 _LOG_LEVEL_STRINGS = ["DEBUG_SQL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-_BTW_METHOD_STRINGS = ["ARG_BD_SAT", "SAT_DP_ONLY"]
-_TASKS_STRINGS = ["CE-ST", "CE-ADM", "CE-CO"]
+_BTW_METHOD_STRINGS = ["ARG_BD_SAT", "ARG_BD_ONLY", "ARG_TW_ONLY"]
+_TASKS_STRINGS = ["CE-ST"]  # , "CE-ADM", "CE-CO"]
 
 
 def setup_arg_parser(usage):
@@ -57,6 +57,7 @@ def setup_arg_parser(usage):
     gen_opts.add_argument("--log-level", dest="log_level", help="Log level", choices=_LOG_LEVEL_STRINGS, default="INFO")
     gen_opts.add_argument("--td-file", dest="td_file", help="Store TreeDecomposition file (htd Output)")
     gen_opts.add_argument("--gr-file", dest="gr_file", help="Store Graph file (htd Input)")
+    gen_opts.add_argument("--cnf-file", dest="cnf_file", help="Store cnf file (and stop)")
     gen_opts.add_argument("--faster", dest="faster", help="Store less information in database", action="store_true")
     gen_opts.add_argument("--parallel-setup", dest="parallel_setup", help="Perform setup in parallel",
                           action="store_true")
@@ -136,7 +137,7 @@ def arg_to_backdoor(af, file, bd_timeout, **kwargs):
     if (bd == "UNKNOWN"):  # clingo timeout, make all arguments backdoor args
         bd = ""
         for a in af.values():
-            bd += "backdoor(" + a.name + "). "
+            bd += "backdoor(" + str(a.atom) + "). "
         bd += "backdoorsize(" + str(len(af)) + ")."
 
     f = open(tmp + "bd.out", "w")  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
@@ -181,52 +182,6 @@ def compute_torso():
     f.close()
 
 
-def sat_dp_only(af, file, argument, **kwargs):
-    # computes a cnf, calls nesthdb projected to all variables (just normal DP)
-    # build cnf
-    # conflict free property
-    arguments = af
-    cnf = ""
-    clauses = 0
-    for a in arguments.values():
-        if a.selfAttacking:
-            cnf = cnf + "-" + str(a.atom) + " 0\n"
-            clauses += 1
-        else:
-            for b in a.attackedBy:
-                if b.selfAttacking:
-                    continue
-                cnf += "-" + str(a.atom) + " -" + str(b.atom) + " 0\n"
-                clauses += 1
-    # stable property
-    for a in arguments.values():
-        cnf += str(a.atom) + " "
-        for b in a.attackedBy:
-            cnf += str(b.atom) + " "
-        cnf += "0\n"
-        clauses += 1
-
-    # reasoning
-    if argument:
-        cnf += str(arguments[argument].atom) + " 0\n"
-        clauses += 1
-        cnf = "c IS THE ARGUMENT " + argument + " (" + str(
-            arguments[
-                argument].atom) + ") CREDULOUSLY ACCEPTED IN THE AF " + file + " W.R.T. STABLE SEMANTICS\n" + "p cnf " + str(
-            Argument.maxArgument) + " " + str(clauses) + "\n" + cnf
-    else:
-        cnf = "c STABLE EXTENSIONS OF THE AF " + file + "\n" + "p cnf " + str(
-            Argument.maxArgument) + " " + str(clauses) + "\n" + cnf
-
-    # save in "argSat.cnf"
-    # ff = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
-    ff = open(tmp + "argSat.cnf", "w")
-    ff.write(cnf)
-    ff.close()
-    # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", None, None, **kwargs)
-    main_btw(cfg, tmp + "argSat.cnf", None, None, **kwargs)
-
-
 def find_last_node(tdr, af, bd):  # traverse the TD in preorder and find out last(a) for all a
     td = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, copy.deepcopy(tdr.bags),
                     tdr.adjacency_list,
@@ -245,13 +200,11 @@ def find_last_node(tdr, af, bd):  # traverse the TD in preorder and find out las
                 a = reverse_dict[v]
                 a.ds[node.id] = d_number
                 ds.append(d_number)
-
                 tdr.bags[node.id].append(d_number)
                 tdr.num_orig_vertices += 1
 
                 if node.parent and v in node.parent.vertices:
                     tdr.bags[node.parent.id].append(d_number)
-
 
                 d_number += 1
 
@@ -485,7 +438,7 @@ def add_o(af, td, variables):
     return o_number - 1
 
 
-def decomp_guided_reduction(af, td, semantics, bd, variables):
+def decomp_guided_reduction(af, td, semantics, bd, variables, store_cnf):
     cnf = ""
     # find last(a)
     debug_cnf = False
@@ -502,6 +455,14 @@ def decomp_guided_reduction(af, td, semantics, bd, variables):
         exit(1)
 
     # f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+
+    if store_cnf is not None:
+        logger.info(f"Saved cnf as {store_cnf}.")
+        f = open(store_cnf, "w")
+        f.write(cnf)
+        f.close()
+        exit(0)
+
     f = open(tmp + "argSat.cnf", "w")
     cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
@@ -688,7 +649,7 @@ def calc_adj(af, graph):
     return adj
 
 
-def arg_bd_sat(af, graph, file, **kwargs):
+def arg_bd_sat(af, graph, file, cnf_file, **kwargs):
     global tmp
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
@@ -723,10 +684,120 @@ def arg_bd_sat(af, graph, file, **kwargs):
                                       tdr.adjacency_list,
                                       af_graph.mg)
 
-    #print_variables(af, bd, af_graph)
-    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables)
+    # print_variables(af, bd, af_graph)
+    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables, cnf_file)
+
+    # atoms = {a.atom for a in af.values()}
+    # nested = atoms - set(bd)
+
+    #
+    # set minor variables
+
+    logger.debug("CNF saved as: " + tmp + "argSat.cnf")
+
+    # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
+    main_btw(cfg, tmp + "argSat.cnf", True, af_graph, bd, **kwargs)
 
 
+def arg_bd_only(af, graph, file, cnf_file, **kwargs):
+    # like arg_bd_sat, but puts everything in one bag
+    global tmp
+    # computes a backdoor set, a TD of its torso and performs a TD reduction
+    semantics = kwargs["task"][3:]
+
+    logger.debug("Computing backdoor")
+    arg_to_backdoor(af, file, **kwargs)
+
+    # dummy tree decomposition with just one bag
+
+    torso = graph.to_undirected()
+
+    bd = [x for x in torso.nodes]
+
+    tdr = TdReader()
+    tdr.bags = {1: [x for x in bd]}
+    tdr.num_bags = 1
+    tdr.tree_width = len(bd) - 1
+    tdr.num_orig_vertices = len(bd)
+    tdr.root = 1
+
+    logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
+    logger.debug("Perform decomposition guided reduction")
+
+    variables, ds = find_last_node(tdr, af, bd)
+
+
+    d_graph = copy.deepcopy(graph)
+
+    adj = calc_adj(af, d_graph)
+
+    af_graph = Graph(d_graph.nodes, d_graph.edges, adj)  # af with d adjacent to their arguments
+
+    non_nested = bd + ds
+
+    af_graph.abstract(non_nested)
+
+    af_graph.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
+                                      tdr.adjacency_list,
+                                      af_graph.mg)
+
+    # print_variables(af, bd, af_graph)
+    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables, cnf_file)
+
+    # atoms = {a.atom for a in af.values()}
+    # nested = atoms - set(bd)
+
+    #
+    # set minor variables
+
+    logger.debug("CNF saved as: " + tmp + "argSat.cnf")
+
+    # main_btw(cfg, os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", torso.tree_decomp, torso, bd_z, **kwargs)
+    main_btw(cfg, tmp + "argSat.cnf", True, af_graph, bd, **kwargs)
+
+
+def arg_tw_only(af, graph, file, cnf_file, **kwargs):
+    global tmp
+    # computes a backdoor set, a TD of its torso and performs a TD reduction
+    semantics = kwargs["task"][3:]
+
+    bd = ""
+    for a in af.values():
+        bd += "backdoor(" + str(a.atom) + "). "
+    bd += "backdoorsize(" + str(len(af)) + ")."
+
+    f = open(tmp + "bd.out", "w")  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out", "w")
+    f.write(bd)
+    f.close()
+
+
+    logger.debug("Computing torso")
+    compute_torso()  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
+    logger.debug("Torso tree decomposition")
+    tdr, torso = decompose_torso(kwargs, af)
+    bd = torso.nodes
+    logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
+    logger.debug("Perform decomposition guided reduction")
+
+    variables, ds = find_last_node(tdr, af, bd)
+
+
+    d_graph = copy.deepcopy(graph)
+
+    adj = calc_adj(af, d_graph)
+
+    af_graph = Graph(d_graph.nodes, d_graph.edges, adj)  # af with d adjacent to their arguments
+
+    non_nested = bd + ds
+
+    af_graph.abstract(non_nested)
+
+    af_graph.tree_decomp = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, tdr.bags,
+                                      tdr.adjacency_list,
+                                      af_graph.mg)
+
+    # print_variables(af, bd, af_graph)
+    decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables, cnf_file)
 
     # atoms = {a.atom for a in af.values()}
     # nested = atoms - set(bd)
@@ -760,10 +831,16 @@ def print_variables(af, bd, af_graph):
 
 
 def solve(af, graph, btw_method, **kwargs):
+    logger.info(f"Method: {btw_method}")
     if (btw_method.lower() == "arg_bd_sat"):
         arg_bd_sat(af, graph, **kwargs)
-    elif (btw_method.lower() == "sat_dp_only"):
-        sat_dp_only(af, **kwargs)
+    elif (btw_method.lower() == "arg_bd_only"):
+        arg_bd_only(af, graph, **kwargs)
+    elif (btw_method.lower() == "arg_tw_only"):
+        arg_tw_only(af, graph, **kwargs)
+    else:
+        logger.error("Unknown method")
+        exit(1)
 
 
 def main():
