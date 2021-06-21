@@ -27,7 +27,10 @@ def _encode(g, pool):
     nodes = list(g.nodes)
 
     # TODO: Could possibly use arc for non-BD instead of extra variables connected
-
+    for u in nodes:
+        if g.has_edge(u, u):
+            formula.append([pool.id(f"b_{u}")])
+            
     # Acyclicity
     for u in nodes:
         formula.append([-pool.id(f"connected_{u}_{u}")])

@@ -11,6 +11,10 @@ def _encode(g, pool):
     formula = CNF()
     nodes = list(g.nodes)
 
+    for u in nodes:
+        if g.has_edge(u, u):
+            formula.append([pool.id(f"b_{u}")])
+
     # Acyclicity
     for u in nodes:
         formula.append([-pool.id(f"connected_{u}_{u}")])
