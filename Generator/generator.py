@@ -40,8 +40,10 @@ def setup_arg_parser(usage):
     gen_opts = parser.add_argument_group("general options", "General options")
     # gen_opts.add_argument("-t", dest="type", help="type of the cluster run", default="")
     gen_opts.add_argument("--cyclelength", dest="cyclelength", help="should be even", default=6, type=int)
-    gen_opts.add_argument("--minchildren", dest="minchildren", help="minimum number of children each level", default=1, type=int)
-    gen_opts.add_argument("--maxchildren", dest="maxchildren", help="maximum number of children each level", default=2, type=int)
+    gen_opts.add_argument("--minchildren", dest="minchildren", help="minimum number of children each level", default=1,
+                          type=int)
+    gen_opts.add_argument("--maxchildren", dest="maxchildren", help="maximum number of children each level", default=2,
+                          type=int)
     gen_opts.add_argument("--numdense", dest="numdense", help="number of dense components", default=1, type=int)
     gen_opts.add_argument("--numsparse", dest="numsparse", help="number of sparse components", default=1, type=int)
     gen_opts.add_argument("--levels", dest="levels", help="Number of levels", default=3, type=int)
@@ -129,7 +131,7 @@ def create_cycle_spikes(graph, args):
             c_n = randint(min_children, max_children)
             for c in range(n + 1, n + c_n + 1):
                 n = len(graph.nodes)
-                t = "a" + str(l) + "_" + str(n+1)
+                t = "a" + str(l) + "_" + str(n + 1)
                 if l not in level_nodes.keys():
                     level_nodes[l] = [t]
                 else:
@@ -158,7 +160,7 @@ def create_tree(graph, args):
 
     level_nodes = {}
 
-    first = "a"+str(len(graph.nodes))
+    first = "a" + str(len(graph.nodes))
     level_nodes[1] = [first]
     graph.add_node(first)
 
@@ -169,7 +171,7 @@ def create_tree(graph, args):
             c_n = randint(min_children, max_children)
             for c in range(n + 1, n + c_n + 1):
                 n = len(graph.nodes)
-                t = "a" + str(l) + "_" + str(n+1)
+                t = "a" + str(l) + "_" + str(n + 1)
                 if l not in level_nodes.keys():
                     level_nodes[l] = [t]
                 else:
@@ -193,13 +195,16 @@ def main():
     args = parse_args(arg_parser)
 
     graph = nx.DiGraph()
-
-    create_cycle_spikes(graph, args)
-    create_cycle_spikes(graph, args)
-    create_cycle_spikes(graph, args)
-    create_tree(graph, args)
-
+    do(graph, args)
     write_af(graph, args.file)
+
+
+def do(graph, args):
+    for _ in range(0, args.numdense):
+        create_cycle_spikes(graph, args)
+
+    for _ in range(0, args.numsparse):
+        create_tree(graph, args)
 
 
 if __name__ == "__main__":
