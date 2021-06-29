@@ -38,7 +38,7 @@ class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptio
 
 
 _LOG_LEVEL_STRINGS = ["DEBUG_SQL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-_BTW_METHOD_STRINGS = ["ARG_BD_SAT", "ARG_BD_ONLY", "ARG_TW_ONLY"]
+_BTW_METHOD_STRINGS = ["ARG_BD_SAT", "ARG_BD_ONLY", "ARG_TW_ONLY", "SAT_ENCODING"]
 _TASKS_STRINGS = ["CE-ST"]  # , "CE-ADM", "CE-CO"]
 
 
@@ -726,7 +726,6 @@ def arg_bd_only(af, graph, file, cnf_file, **kwargs):
 
     variables, ds = find_last_node(tdr, af, bd)
 
-
     d_graph = copy.deepcopy(graph)
 
     adj = calc_adj(af, d_graph)
@@ -770,7 +769,6 @@ def arg_tw_only(af, graph, file, cnf_file, **kwargs):
     f.write(bd)
     f.close()
 
-
     logger.debug("Computing torso")
     compute_torso()  # os.path.dirname(os.path.realpath(__file__)) + "/bd.out")
     logger.debug("Torso tree decomposition")
@@ -780,7 +778,6 @@ def arg_tw_only(af, graph, file, cnf_file, **kwargs):
     logger.debug("Perform decomposition guided reduction")
 
     variables, ds = find_last_node(tdr, af, bd)
-
 
     d_graph = copy.deepcopy(graph)
 
@@ -830,6 +827,39 @@ def print_variables(af, bd, af_graph):
         print(a)
 
 
+def sat_encoding(af, graph, file, cnf_file, **kwargs):
+    if cnf_file is None:
+        logger.error("No cnf file set in SAT-ENCODING mode")
+        exit(1)
+
+    semantics = kwargs["task"][3:]
+    if semantics.lower() != "st":
+        logger.error("Unknown semantics")
+        exit(1)
+
+    cnf = ""
+    clauses = 0
+    for a in graph.nodes():
+        right = "-" + str(a) + " "
+        for b in graph.predecessors(a):
+            right += "-" + str(b) + " "
+            cnf += str(b) + " " + str(a) + " 0\n"
+            clauses += 1
+        right += "0\n"
+        cnf += right
+        clauses += 1
+
+    variables = len(graph.nodes())
+
+    cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
+
+    f = open(cnf_file, "w")
+    f.write(cnf)
+    f.close()
+
+    logger.info(f"cnf saved to {cnf_file}")
+
+
 def solve(af, graph, btw_method, **kwargs):
     logger.info(f"Method: {btw_method}")
     if (btw_method.lower() == "arg_bd_sat"):
@@ -838,6 +868,8 @@ def solve(af, graph, btw_method, **kwargs):
         arg_bd_only(af, graph, **kwargs)
     elif (btw_method.lower() == "arg_tw_only"):
         arg_tw_only(af, graph, **kwargs)
+    elif (btw_method.lower() == "sat_encoding"):
+        sat_encoding(af, graph, **kwargs)
     else:
         logger.error("Unknown method")
         exit(1)
