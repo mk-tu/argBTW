@@ -39,7 +39,7 @@ class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptio
 
 _LOG_LEVEL_STRINGS = ["DEBUG_SQL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 _BTW_METHOD_STRINGS = ["ARG_BD_SAT", "ARG_BD_ONLY", "ARG_TW_ONLY", "SAT_ENCODING"]
-_TASKS_STRINGS = ["CE-ST"]  # , "CE-ADM", "CE-CO"]
+_TASKS_STRINGS = ["CE-ST", "CE-ADM"]  # , "CE-CO"]
 
 
 def setup_arg_parser(usage):
@@ -182,7 +182,9 @@ def compute_torso():
     f.close()
 
 
-def find_last_node(tdr, af, bd):  # traverse the TD in preorder and find out last(a) for all a
+def find_last_node(tdr, af, bd, semantics):  # traverse the TD in preorder and find out last(a) for all a
+    # side effect: initializes d variables (and for admissible: n variables)
+
     td = TreeDecomp(tdr.num_bags, tdr.tree_width, tdr.num_orig_vertices, tdr.root, copy.deepcopy(tdr.bags),
                     tdr.adjacency_list,
                     None)  # just to traverse tdr easier (deep copy so that the vertices lists are not updated)
@@ -216,6 +218,17 @@ def find_last_node(tdr, af, bd):  # traverse the TD in preorder and find out las
         for c in node.children:
             nodes.insert(0, c)
 
+    if semantics.lower() == "adm":
+        for a in af.values():
+            a.n = d_number
+            d_number += 1
+
+            if a.atom not in bd:  # for admissible the non backdoor vars need a d variable as well
+                                  # we create it here and "rewire" it to their respective bags later
+                a.ds[-1] = d_number
+                d_number += 1
+
+
     return d_number - 1, ds
 
 
@@ -231,6 +244,52 @@ def decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd):
             a = reverse_dict[v]
             if (a.atom not in bd):  # does probably not work for adm TODO
                 continue
+            # <->
+            dta = str(a.ds[node.id])
+            right_arrow = ""
+            right_arrow += "-" + dta + " "
+            for at in a.attacked_by():
+                # if node not in at.ds.keys():
+                #     continue
+                if at not in node.all_vertices:
+                    continue
+                right_arrow += str(at) + " "
+                cnf += dta + " -" + str(at) + " 0\n"
+                clauses += 1
+                if debug_cnf:
+                    cnf += "c\t (1) <= attacker)\n"
+
+            for c in node.children:
+                if c.id in a.ds.keys():
+                    right_arrow += str(a.ds[c.id]) + " "
+                    cnf += dta + " -" + str(a.ds[c.id]) + " 0\n"
+                    clauses += 1
+                    if debug_cnf:
+                        cnf += "c\t (1) <= dta child)\n"
+
+            right_arrow += "0\n"
+            cnf += right_arrow
+            clauses += 1
+            if debug_cnf:
+                cnf += "c\t (1) =>\n"
+
+        # node.vertices = [int(x) for x in node.vertices]
+        for c in node.children:
+            nodes.insert(0, c)
+
+    return clauses, cnf
+
+
+def decomp_guided_reduction_1_adm(af, td, cnf, clauses, debug_cnf, bd):
+    # dta -> V dta v V a
+    # dta <- V dta v V a
+
+    nodes = [td.root]
+
+    while (len(nodes) > 0):
+        node = nodes.pop()
+        for v in set(node.all_vertices).intersection(range(1, len(af) + 1)):
+            a = reverse_dict[v]
             # <->
             dta = str(a.ds[node.id])
             right_arrow = ""
@@ -301,10 +360,10 @@ def decomp_guided_reduction_3(af, td, cnf, clauses, debug_cnf, bd):
     return clauses, cnf
 
 
-def decomp_guided_reduction_4(af, td, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_4(af, td, cnf, clauses, debug_cnf, bd):
     for arg in af.values():
-        for b in arg.attackedBy:  # for each attack (b,arg)
-            cnf += "-" + str(b.n) + " -" + str(arg.atom) + " 0\n"
+        for b in arg.attacked_by():  # for each attack (b,arg)
+            cnf += "-" + str(reverse_dict[b].n) + " -" + str(arg.atom) + " 0\n"
             if debug_cnf:
                 cnf += "c\t (4)\n"
 
@@ -312,9 +371,12 @@ def decomp_guided_reduction_4(af, td, cnf, clauses, debug_cnf):
     return clauses, cnf
 
 
-def decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf, bd):
     for arg in af.values():
-        cnf += "" + str(arg.atom) + " " + str(arg.n) + " " + str(arg.ds[arg.last_node]) + " 0\n"
+        cnf += "" + str(arg.atom) + " " + str(arg.n) + " "
+        cnf += str(arg.ds[arg.last_node]) + " "
+
+        cnf += "0\n"
         if debug_cnf:
             cnf += "c\t (5)\n"
 
@@ -322,7 +384,7 @@ def decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf):
     return clauses, cnf
 
 
-def decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf, bd):
     for arg in af.values():
         cnf += "-" + str(arg.n) + " -" + str(arg.atom) + " 0\n"
         if debug_cnf:
@@ -332,9 +394,11 @@ def decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf):
     return clauses, cnf
 
 
-def decomp_guided_reduction_7(af, td, cnf, clauses, debug_cnf):
+def decomp_guided_reduction_7(af, td, cnf, clauses, debug_cnf, bd):
     for arg in af.values():
+
         cnf += "-" + str(arg.n) + " -" + str(arg.ds[arg.last_node]) + " 0\n"
+
         if debug_cnf:
             cnf += "c\t (7)\n"
 
@@ -414,14 +478,25 @@ def decomp_guided_reduction_11(af, td, cnf, clauses, debug_cnf):
     return clauses, cnf
 
 
-def add_n(af, variables):  # adds a prop var n for each argument
-    for arg in af.values():
-        variables += 1
-        arg.n = variables
+def add_n(af, td, bd, variables):
+    nodes = [td.root]
+
+    args_non_bd = set(range(1, len(af) + 1)) - set(bd)
+
+    while nodes:
+        node = nodes.pop()
+        for v in node.minor_vertices:
+            if v in args_non_bd:
+                a = reverse_dict[v]
+                a.last_node = node.id
+                a.ds[node.id] = a.ds.pop(-1)
+
+
+        for c in node.children:
+            nodes.insert(0, c)
+
 
     return variables
-
-
 def add_o(af, td, variables):
     nodes = [td.root]
     o_number = variables + 1
@@ -449,6 +524,15 @@ def decomp_guided_reduction(af, td, semantics, bd, variables, store_cnf):
         clauses, cnf = decomp_guided_reduction_1(af, td, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_2(af, td, cnf, clauses, debug_cnf)
         clauses, cnf = decomp_guided_reduction_3(af, td, cnf, clauses, debug_cnf, bd)
+    elif semantics.lower() == "adm":
+        # find for non backdoor variables which bag they are in and set last_node
+        variables = add_n(af, td, bd, variables)
+        clauses, cnf = decomp_guided_reduction_1_adm(af, td, cnf, clauses, debug_cnf, bd)
+        clauses, cnf = decomp_guided_reduction_2(af, td, cnf, clauses, debug_cnf)
+        clauses, cnf = decomp_guided_reduction_4(af, td, cnf, clauses, debug_cnf, bd)
+        clauses, cnf = decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf, bd)
+        clauses, cnf = decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf, bd)
+        clauses, cnf = decomp_guided_reduction_7(af, td, cnf, clauses, debug_cnf, bd)
 
     else:
         logger.error("Unknown semantics")
@@ -628,6 +712,10 @@ def calc_adj(af, graph):
             graph.add_node(d)
             graph.add_edge(d, a_arg.atom)
 
+        if a_arg.n != 0:
+            graph.add_node(a_arg.n)
+            graph.add_edge(a_arg.n, a_arg.atom)
+
         a = a_arg.atom
         for b in a_arg.attacked_by():
             if a in adj:
@@ -646,6 +734,13 @@ def calc_adj(af, graph):
                 adj[a] = {d}
             adj[d] = {a}
 
+        if a_arg.n != 0:
+            if a in adj:
+                adj[a].add(a_arg.n)
+            else:
+                adj[a] = {a_arg.n}
+            adj[a_arg.n] = {a}
+
     return adj
 
 
@@ -653,7 +748,6 @@ def arg_bd_sat(af, graph, file, cnf_file, **kwargs):
     global tmp
     # computes a backdoor set, a TD of its torso and performs a TD reduction
     semantics = kwargs["task"][3:]
-
     logger.debug("Computing backdoor")
     arg_to_backdoor(af, file, **kwargs)
     logger.debug("Computing torso")
@@ -664,14 +758,13 @@ def arg_bd_sat(af, graph, file, cnf_file, **kwargs):
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
 
-    variables, ds = find_last_node(tdr, af, bd)
+    variables, ds = find_last_node(tdr, af, bd, semantics)
 
     logger.debug("Add remaining (i.e. not backdoor) arguments to tree decomposition")
 
     # add_remaining(tdr, bd, af)
 
     d_graph = copy.deepcopy(graph)
-
     adj = calc_adj(af, d_graph)
 
     af_graph = Graph(d_graph.nodes, d_graph.edges, adj)  # af with d adjacent to their arguments
@@ -684,7 +777,7 @@ def arg_bd_sat(af, graph, file, cnf_file, **kwargs):
                                       tdr.adjacency_list,
                                       af_graph.mg)
 
-    # print_variables(af, bd, af_graph)
+    #print_variables(af, bd, af_graph)
     decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables, cnf_file)
 
     # atoms = {a.atom for a in af.values()}
@@ -724,7 +817,7 @@ def arg_bd_only(af, graph, file, cnf_file, **kwargs):
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
 
-    variables, ds = find_last_node(tdr, af, bd)
+    variables, ds = find_last_node(tdr, af, bd, semantics)
 
     d_graph = copy.deepcopy(graph)
 
@@ -777,7 +870,7 @@ def arg_tw_only(af, graph, file, cnf_file, **kwargs):
     logger.info("Torso decomposed: Backdoor-treewidth: " + str(tdr.tree_width) + ", #bags: " + str(tdr.num_bags))
     logger.debug("Perform decomposition guided reduction")
 
-    variables, ds = find_last_node(tdr, af, bd)
+    variables, ds = find_last_node(tdr, af, bd, semantics)
 
     d_graph = copy.deepcopy(graph)
 
@@ -824,6 +917,8 @@ def print_variables(af, bd, af_graph):
         a = a + (arg.name + " " + str(arg.atom) + "\tds: ")
         for d in arg.ds.keys():
             a = a + str(d) + "=" + str(arg.ds[d]) + "\t"
+        a = a + "n=" + str(arg.n)
+        a = a + "\tlastnode=" + str(arg.last_node)
         print(a)
 
 
@@ -833,6 +928,9 @@ def sat_encoding(af, graph, file, cnf_file, **kwargs):
         exit(1)
 
     semantics = kwargs["task"][3:]
+    if semantics.lower() == "adm":
+        logger.error("Admissible encoding not yet implemented")
+        exit(1)
     if semantics.lower() != "st":
         logger.error("Unknown semantics")
         exit(1)
