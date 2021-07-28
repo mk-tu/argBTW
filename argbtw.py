@@ -224,10 +224,9 @@ def find_last_node(tdr, af, bd, semantics):  # traverse the TD in preorder and f
             d_number += 1
 
             if a.atom not in bd:  # for admissible the non backdoor vars need a d variable as well
-                                  # we create it here and "rewire" it to their respective bags later
+                # we create it here and "rewire" it to their respective bags later
                 a.ds[-1] = d_number
                 d_number += 1
-
 
     return d_number - 1, ds
 
@@ -491,12 +490,12 @@ def add_n(af, td, bd, variables):
                 a.last_node = node.id
                 a.ds[node.id] = a.ds.pop(-1)
 
-
         for c in node.children:
             nodes.insert(0, c)
 
-
     return variables
+
+
 def add_o(af, td, variables):
     nodes = [td.root]
     o_number = variables + 1
@@ -533,12 +532,13 @@ def decomp_guided_reduction(af, td, semantics, bd, variables, store_cnf):
         clauses, cnf = decomp_guided_reduction_5(af, td, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_6(af, td, cnf, clauses, debug_cnf, bd)
         clauses, cnf = decomp_guided_reduction_7(af, td, cnf, clauses, debug_cnf, bd)
-
     else:
-        logger.error("Unknown semantics")
+        logger.error(f"Unknown semantics: {semantics.lower()}")
         exit(1)
 
     # f = open(os.path.dirname(os.path.realpath(__file__)) + "/argSat.cnf", "w")
+
+    cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
 
     if store_cnf is not None:
         logger.info(f"Saved cnf as {store_cnf}.")
@@ -548,7 +548,6 @@ def decomp_guided_reduction(af, td, semantics, bd, variables, store_cnf):
         exit(0)
 
     f = open(tmp + "argSat.cnf", "w")
-    cnf = "p cnf " + str(variables) + " " + str(clauses) + "\n" + cnf
     f.write(cnf)
     f.close()
 
@@ -777,7 +776,7 @@ def arg_bd_sat(af, graph, file, cnf_file, **kwargs):
                                       tdr.adjacency_list,
                                       af_graph.mg)
 
-    #print_variables(af, bd, af_graph)
+    # print_variables(af, bd, af_graph)
     decomp_guided_reduction(af, af_graph.tree_decomp, semantics, bd, variables, cnf_file)
 
     # atoms = {a.atom for a in af.values()}
@@ -928,24 +927,39 @@ def sat_encoding(af, graph, file, cnf_file, **kwargs):
         exit(1)
 
     semantics = kwargs["task"][3:]
-    if semantics.lower() == "adm":
-        logger.error("Admissible encoding not yet implemented")
-        exit(1)
-    if semantics.lower() != "st":
-        logger.error("Unknown semantics")
+
+    if semantics.lower() not in {"adm", "st"}:
+        logger.error(f"Unknown semantics: {semantics.lower()}")
         exit(1)
 
     cnf = ""
     clauses = 0
-    for a in graph.nodes():
-        right = "-" + str(a) + " "
-        for b in graph.predecessors(a):
-            right += "-" + str(b) + " "
-            cnf += str(b) + " " + str(a) + " 0\n"
+
+    if semantics.lower() == "adm":
+        for e in graph.edges():  # cf property
+            cnf += "-" + str(e[0]) + " -" + str(e[1]) + " 0\n"
             clauses += 1
-        right += "0\n"
-        cnf += right
-        clauses += 1
+
+        for a in graph.nodes():  # adm property: for each argument a
+            for b in graph.predecessors(a):  # for each attacker b of a
+                cl = "-" + str(a) + " "  # either not a or
+                for c in graph.predecessors(b):  # at least one of the attackers c of b is in
+                    cl += str(c) + " "
+                cl += "0\n"
+                clauses += 1
+                cnf += cl
+
+
+    elif semantics.lower() == "st":
+        for a in graph.nodes():
+            right = "-" + str(a) + " "
+            for b in graph.predecessors(a):
+                right += "-" + str(b) + " "
+                cnf += str(b) + " " + str(a) + " 0\n"
+                clauses += 1
+            right += "0\n"
+            cnf += right
+            clauses += 1
 
     variables = len(graph.nodes())
 
