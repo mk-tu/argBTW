@@ -12,7 +12,8 @@ python argbtw.py --log=LOGLEVEL --btw-method=METHOD --task=TASK (--cnf-file=out.
 --cnf-file=out.cnf **(required with --btw-method=SAT_ENCODING)**
 Constructs a formula in cnf (models correspond to extensions of the AF),
 saves it as out.cnf and exits (i.e. does not solve the instance)
-
+--bd-timeout=60
+Timeout in seconds for calculating the backdoor (default 20)
 
 
 
